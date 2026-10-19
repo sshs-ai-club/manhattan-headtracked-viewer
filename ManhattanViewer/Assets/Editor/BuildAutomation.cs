@@ -30,7 +30,10 @@ namespace Manhattan.Editor
             string revision = Environment.GetEnvironmentVariable("MANHATTAN_TECHNOLOGY_REVISION");
             if (string.IsNullOrEmpty(revision) || revision.Length != 40) throw new ArgumentException("Set MANHATTAN_TECHNOLOGY_REVISION to the tested 40-character Git commit.");
             string package = "https://github.com/lollipop190000/head-tracked-display.git?path=/Packages/com.headtracked.display#" + revision;
-            request = Client.AddAndRemove(new[] { package, "com.unity.cloud.gltfast@6.20.0", "com.unity.addressables@2.7.6", "com.unity.inputsystem@1.20.0", "com.unity.render-pipelines.universal@17.3.0", "com.unity.test-framework@1.6.0", "com.unity.ugui@2.0.0", "com.unity.nuget.newtonsoft-json@3.2.2" });
+            // Defaults match the default editor (6000.3.22f1); tools/unity-profiles overrides them for other editors.
+            string urp = Environment.GetEnvironmentVariable("MANHATTAN_URP_VERSION") ?? "17.3.0";
+            string addressables = Environment.GetEnvironmentVariable("MANHATTAN_ADDRESSABLES_VERSION") ?? "2.7.6";
+            request = Client.AddAndRemove(new[] { package, "com.unity.cloud.gltfast@6.20.0", "com.unity.addressables@" + addressables, "com.unity.inputsystem@1.20.0", "com.unity.render-pipelines.universal@" + urp, "com.unity.test-framework@1.6.0", "com.unity.ugui@2.0.0", "com.unity.nuget.newtonsoft-json@3.2.2" });
             deadline = EditorApplication.timeSinceStartup + 600;
             EditorApplication.update += Poll;
         }
