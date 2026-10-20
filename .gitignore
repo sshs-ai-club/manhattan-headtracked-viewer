@@ -30,6 +30,8 @@
 **/Assets/Resources/CityCatalog.asset.meta
 **/Assets/Resources/ViewerBuildIdentity.json
 **/Assets/Resources/ViewerBuildIdentity.json.meta
+**/Assets/Resources/CityBuildProfile.json
+**/Assets/Resources/CityBuildProfile.json.meta
 **/Assets/Resources/CityDetailVariants/
 **/Assets/Resources/CityDetailVariants.meta
 **/Assets/AddressableAssetsData/
@@ -69,4 +71,15 @@ Thumbs.db
 **/Assets/Resources/CityOwnership.json.meta
 **/Assets/Resources/CityOwnershipHash.txt
 **/Assets/Resources/CityOwnershipHash.txt.meta
+**/Assets/TraversalLab/MLGenerated/
+**/Assets/TraversalLab/MLGenerated.meta
+
+# Personal agent/tool files stay local (see docs/team/WORKFLOW.md)
+/PLAN.md
+/NEXT.md
+/CLAUDE.local.md
+/.claude/
+/.cursor/
+/.codex/
+/.vault/
 /.unity-profile
