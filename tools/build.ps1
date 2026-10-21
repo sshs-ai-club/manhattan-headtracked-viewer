@@ -13,6 +13,13 @@ function Assert-CleanBuildSource {
     }
     finally { $ErrorActionPreference = $previousErrorAction }
     if ($statusExitCode -ne 0) { throw "Git source-status check failed (exit code $statusExitCode); a build requires a valid Git checkout." }
+    if ($ViewerProfile) {
+        # An applied Unity profile intentionally differs from HEAD in its overlay files only.
+        $overlayRoot = Join-Path $ViewerProfileRoot "$($ViewerProfile.editorVersion)\overlay"
+        $overlayPaths = @(Get-ChildItem -LiteralPath $overlayRoot -Recurse -File | ForEach-Object {
+            'ManhattanViewer/' + $_.FullName.Substring($overlayRoot.Length + 1).Replace('\', '/') })
+        $sourceChanges = @($sourceChanges | Where-Object { $overlayPaths -notcontains $_.Substring(3).Trim('"') })
+    }
     if ($sourceChanges.Count -gt 0 -and -not $AllowDirty) {
         throw 'The build source has tracked or untracked changes. Commit or remove them, or pass -AllowDirty for a deliberately dirty development build.'
     }

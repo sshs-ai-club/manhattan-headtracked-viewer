@@ -2,7 +2,20 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $ViewerRepository = [System.IO.Path]::GetFullPath((Split-Path -Parent $PSScriptRoot))
 $ViewerProject = Join-Path $ViewerRepository 'ManhattanViewer'
-$ViewerEditorVersion = '6000.3.22f1'
+$ViewerDefaultEditorVersion = '6000.3.22f1'
+$ViewerProfileRoot = Join-Path $PSScriptRoot 'unity-profiles'
+$ViewerActiveProfileMarker = Join-Path $ViewerRepository '.unity-profile'
+# tools/use_unity_profile.ps1 writes the marker; without it the committed project (default version) is in use.
+$ViewerEditorVersion = $ViewerDefaultEditorVersion
+$ViewerProfile = $null
+if (Test-Path -LiteralPath $ViewerActiveProfileMarker) {
+    $activeProfile = (Get-Content -LiteralPath $ViewerActiveProfileMarker -Raw).Trim()
+    $profileFile = Join-Path $ViewerProfileRoot "$activeProfile\profile.json"
+    if ($activeProfile -and (Test-Path -LiteralPath $profileFile)) {
+        $ViewerProfile = Get-Content -LiteralPath $profileFile -Raw | ConvertFrom-Json
+        $ViewerEditorVersion = $ViewerProfile.editorVersion
+    }
+}
 
 function Invoke-Checked {
     param([Parameter(Mandatory)][string]$Command, [string[]]$Arguments = @())
@@ -117,6 +130,14 @@ function Invoke-ViewerPackageInstall {
     $logDirectory = Join-Path $ViewerRepository 'Logs'
     New-Item -ItemType Directory -Path $logDirectory -Force | Out-Null
     $logPath = Join-Path $logDirectory 'install-packages.log'
+    # BuildAutomation.InstallPackages falls back to the default editor's package versions when these are unset.
+    if ($ViewerProfile) {
+        $env:MANHATTAN_URP_VERSION = $ViewerProfile.packages.'com.unity.render-pipelines.universal'
+        $env:MANHATTAN_ADDRESSABLES_VERSION = $ViewerProfile.packages.'com.unity.addressables'
+    }
+    else {
+        Remove-Item Env:MANHATTAN_URP_VERSION, Env:MANHATTAN_ADDRESSABLES_VERSION -ErrorAction SilentlyContinue
+    }
     $process = Start-Process -FilePath $EditorPath -ArgumentList @('-batchmode', '-projectPath',
         ('"' + $ViewerProject + '"'), '-executeMethod', 'Manhattan.Editor.BuildAutomation.InstallPackages',
         '-logFile', ('"' + $logPath + '"')) -WindowStyle Hidden -PassThru

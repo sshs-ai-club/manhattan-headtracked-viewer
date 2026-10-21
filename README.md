@@ -86,6 +86,16 @@ Reusable projection, observations, calibration and tracking live in the separate
 
 Building is optional; use the Windows ZIP to try the application. Development requires Git + Git LFS, GitHub CLI, Python 3.13.5, Unity CLI, and **Unity 6000.3.22f1** with Windows build support and an active Unity license. The renderer is URP 17.3.0. Full source extraction, generated assets and Unity caches need substantially more disk space than the release ZIP.
 
+### Using Unity 6000.6.5f1 instead
+
+The committed project targets 6000.3.22f1 (URP 17.3.0) and stays the default. To work with **Unity 6000.6.5f1** (URP 17.6.0, Addressables 2.11.2) run this once before `setup.ps1`, and again with `-Version 6000.3.22f1` to go back:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File tools/use_unity_profile.ps1 -Version 6000.6.5f1
+```
+
+The profile in `tools/unity-profiles/6000.6.5f1/` replaces only the version-specific project files (package manifest and lock, URP and graphics settings, `ProjectVersion.txt`); every script, shader and tool is shared. Switching restores those files from Git, so commit or discard edits to them first. Builds, tests and `setup.ps1` then use the active editor automatically. The 6000.6.5f1 profile was verified by building and launching the player; the unit-test suites have not been run on it, and a regenerated bake is not needed when switching editors.
+
 Run these commands from a new checkout. Setup downloads the public city source release and verifies its manifest. The current download helper uses GitHub CLI authentication.
 
 ```powershell

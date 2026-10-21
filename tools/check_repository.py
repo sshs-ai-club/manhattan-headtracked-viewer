@@ -27,8 +27,18 @@ def main():
     if any(value.startswith("file:") for value in packages["dependencies"].values()):
         raise ValueError("A shared project cannot depend on a local file package")
     editor = (ROOT / "ManhattanViewer/ProjectSettings/ProjectVersion.txt").read_text(encoding="utf-8")
-    if "m_EditorVersion: 6000.3.22f1" not in editor:
+    # The committed project is the default editor; an applied tools/unity-profiles/<version> overlay may differ.
+    allowed = {"6000.3.22f1"}
+    marker = ROOT / ".unity-profile"
+    if marker.exists():
+        allowed.add(marker.read_text(encoding="utf-8").strip())
+    if not any(f"m_EditorVersion: {version_text}\n" in editor.replace("\r\n", "\n") for version_text in allowed):
         raise ValueError("Unexpected Unity Editor version")
+    for profile_dir in (ROOT / "tools/unity-profiles").glob("*/profile.json"):
+        profile = json.loads(profile_dir.read_text(encoding="utf-8"))
+        overlay_version = (profile_dir.parent / "overlay/ProjectSettings/ProjectVersion.txt").read_text(encoding="utf-8")
+        if profile["editorVersion"] != profile_dir.parent.name or f"m_EditorVersion: {profile['editorVersion']}" not in overlay_version:
+            raise ValueError(f"Unity profile {profile_dir.parent.name} is inconsistent")
     result = subprocess.run(["git", "-C", str(ROOT), "ls-files", "-z"], check=True, capture_output=True)
     forbidden = re.compile(r"(^|/)(3d_modeling|need_to_change|Library|Temp|Obj|UserSettings|Builds|Logs|\.cache|\.tools|\.bootstrap|\.verification|\.venv|ManhattanGenerated|SourceModels|CitySource|AddressableAssetsData)(/|$)|Assets/Generated/City(/|$)|Assets/Resources/CityCatalog\.asset", re.I)
     for path in result.stdout.decode("utf-8").split("\0"):
