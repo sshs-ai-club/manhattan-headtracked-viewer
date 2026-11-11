@@ -1,40 +1,98 @@
 # Roadmap
 
-Plan for turning the Manhattan head-tracked viewer into a fun web-swinging game. Read [GDD](../game/GDD.md) for what the game is and [ROLES](ROLES.md) for who owns each stream. Checked boxes mean verified in the repository at the time of writing; everything else is a proposal.
+Plan for turning the Manhattan head-tracked viewer into a booth game for the 천년제 on **Dec 29, 2026** (09:00 to 12:00). Read [GDD](../game/GDD.md) for what the game is and [ROLES](ROLES.md) for who owns each area. Checked boxes mean verified in the repository at the time of writing; everything else is a proposal. Every task becomes one GitHub issue (see [AGENTS.md](../../AGENTS.md#parallel-work-with-ai-agents)); this file lists them, the issue holds who does it.
 
-## Where we are
+## Where we are (Nov 11)
 
-Verified from code and git history:
+Read from `main`:
 
-- [x] Streamed Manhattan with off-axis head-tracked projection, webcam tracker, Windows release ZIP (Core).
+- [x] Streamed Manhattan with off-axis head-tracked projection, webcam tracker, Windows release ZIP; release v0.1.1 is a viewer with flight only (Core).
 - [x] Free flight with keyboard, mouse, HID gamepad/BLE controller (Core, Hardware).
-- [x] Mouse-fired web swing on a pendulum model with 250 m range (Swing, PR #12). Not played in depth after the final merge; the doc says so.
-- [x] Wrist device input components: parser, calibration, aim ray, UDP receiver, fake sender (Hardware, PR #13). **Not connected to anything**, and no real device test.
-- [ ] Anything that makes it a game: goals, score, feedback, sound, a hero, a reason to keep playing.
+- [x] Web swing with anchor assist, rope wrap, wall run, two-hand launch and speed effects with a wind sound (Swing). Runs only in development traversal builds.
+- [x] Wrist input: parser, calibration and UDP receiver. `MouseWebShooter` listens to `HandAimController.Fired`, so a wrist can fire once (Hardware). No release signal, no real ESP32 test, and the receiver must be placed by hand.
+- [ ] `hardware/` holds only a README; the firmware lives in a personal project.
+- [ ] Game layer: no rings, timer, score, leaderboard or menus.
+- [ ] 1v1: no networking code.
+- [ ] Character and audio: procedural web visuals only; wind is the only sound.
+- [ ] Decisions 0001 to 0008 are all Proposed.
 
-The next milestone is therefore not more rendering. It is the first five minutes of fun.
+Almost all recent commits come from one person, so everyone else must be able to build and merge without waiting on them.
 
-## Milestones
+## Booth plan to Dec 29
 
-| | Name | Done when | Streams involved |
+Each date closes the tasks listed under it. If one slips, cut **stretch** tasks rather than move the code freeze. Areas are in brackets; owners come from the issue, not this file.
+
+| | Date | Milestone | Done when |
 |---|---|---|---|
-| M0 | **One team** | Roles claimed, `main` protected, everyone has run the release ZIP, decisions 0001–0007 resolved | all |
-| M1 | **First fun** | One 3-minute route with 10 rings, a timer, best time, web and swing sounds, one music loop, a pair of hero hands. Mouse only. Five people played it and said which part was fun | design, swing, audio, character, world |
-| M2 | **Comfortable** | Comfort test passes (below). Frame rate target met on the reference machine | core, swing |
-| M3 | **Hardware in** | Wrist device fires webs in-game, BLE controller drives movement, pairing status shown on screen, mouse fallback. Two real devices tested | hardware, swing |
-| M4 | **Game** | Missions or modes beyond the time trial, per the accepted story decision. Menu, settings, quit, a Windows release | design, world, all |
-| M5 | **Show day** | Demo-ready build, 10-minute kiosk loop, setup checklist, backup laptop | all |
+| M0 | Nov 14 | **One team** | Tasks on the GitHub Projects board, ROLES confirmed, open decisions answered |
+| M1 | Nov 22 | **Booth build boots** | One program opens straight into swing mode on a 10-ring route; ESP32 sends over Wi-Fi; everyone builds from source |
+| M2 | Nov 29 | **Core loop** | Rings, timer, finish and restart work; the wrist holds and releases the web, with mouse fallback |
+| M3 | Dec 6 | **Booth flow and sync** | Name to result in one 4-minute slot, leaderboard, two laptops see each other, hands and sounds in |
+| M4 | Dec 13 | **Feature complete** | Match rules, 3 devices, spectator screen, 60 fps on both laptops. 1v1 go or no-go on **Dec 15** |
+| M5 | Dec 20 | **Code freeze** | Booth release installed on all three laptops, comfort test done. Only crash fixes merge after this |
+| M6 | Dec 29 | **Booth day** | Rehearsal Dec 22 to 23, day-of checklist Dec 27, booth 09:00 to 12:00 |
 
-Dates are not set. Sprint length and review cadence are for the group to decide at M0.
+### Nov 14
 
-## First week, in order
+- [ ] Update [ROLES](ROLES.md) and put every task in this plan on the GitHub Projects board, one issue each. (design)
+- [ ] Accept or reject decisions 0001 to 0008; 0002, 0003 and 0006 affect the booth directly. (design, all)
+- [ ] Weekly 30-minute check-in until Dec 20; each person reports what merged, not what was tried. (design)
 
-1. Merge this docs PR. Repo admin turns on branch protection ([WORKFLOW](WORKFLOW.md#repository-settings-to-turn-on-needs-a-repo-admin)).
-2. Everyone claims a role in [ROLES](ROLES.md) and answers the open decisions in [docs/decisions](../decisions/README.md) (vote in the PR comments).
-3. Everyone runs the Windows release ZIP and writes down on an issue: GPU, resolution, whether it felt dizzy, one thing that was fun.
-4. Hardware: wire `HandAimController.Fired` to `WebSwingMotionInput.TryFire` (first integration PR). Test with `tools/fake_wrist.py` before any real device.
-5. Design: turn the M1 route into a spec (ring positions in city coordinates, timer rules).
-6. Audio and Character: placeholders first (one web-shoot sound, one swing loop, plain hands) so design can feel the loop.
+### Nov 22
+
+- [ ] Booth build that starts in swing mode, with development keys hidden. (core, swing)
+- [ ] One ring route: 10 rings, about 3 minutes, in Midtown, in city coordinates, starting on a rooftop. (world, design)
+- [ ] Move the wrist device to ESP32 and send `yaw,pitch,fire` over Wi-Fi UDP to the laptop hotspot (port 8766). In progress. (hardware)
+- [ ] Buy the 2 webcams and test tracking at the second seat (about 1.3 m). (core, design)
+- [ ] Everyone builds and runs the project on their own laptop ([team quickstart](../team-quickstart.md)). (all)
+
+### Nov 29
+
+- [ ] Ring pass detection, timer, finish line, one-key restart. (design)
+- [ ] Hold and release: the device sends a held state and the game lets go when it stops. (hardware, swing)
+- [ ] The receiver is added to the booth build automatically, shows connection status and falls back to the mouse. (hardware)
+- [ ] Separate recentring from grabbing: a button, or recentre only at the start of a run. (hardware)
+- [ ] Measure aim drift over 3 minutes; choose MPU-6050 or BNO085. (hardware)
+
+### Dec 6
+
+- [ ] Booth flow: name entry, face calibration, countdown, run, result. (design)
+- [ ] Leaderboard per 부, saved to a local file, with a reset. (design)
+- [ ] Position sync between the two laptops over LAN: UDP, 20 to 30 updates a second, absolute city coordinates. (core)
+- [ ] Opponent avatar and their web line. (character, core)
+- [ ] Simple first-person hands with a firing pose. (character)
+- [ ] Web shoot, attach, ring and finish sounds, plus one music loop with a clear licence. In progress. (audio)
+
+### Dec 13
+
+- [ ] Match rules: web pulls the opponent, rooftop capture points, 3 rounds of 90 seconds; one laptop decides hits and score. (design, swing, core)
+- [ ] Ring pass flash, finish and result screen effects. (character)
+- [ ] Spectator view on the 전자칠판: play feed, face tracking, speed and angle, leaderboard. (core, design)
+- [ ] 60 fps on both booth laptops at the booth resolution, with a quality preset. (core)
+- [ ] Build 3 wrist devices with straps, power bank and cable; vibration optional. (hardware)
+- [ ] Firmware, wiring and pin table in `hardware/`. (hardware)
+- [ ] Stretch: head-dodge obstacles using the tracked eye position. (design, world)
+- [ ] Stretch: hidden items that only show when the player leans. (design, world)
+- [ ] Line up equipment: 2 monitors, 2 GPU laptops plus a spare, LAN cable, power strips, HDMI; write down who brings what. (all)
+- [ ] Buy the blackout curtains. (all)
+
+### Dec 15
+
+- [ ] Go or no-go on the full duel. No-go means 2부 runs as a two-player race on the synced build. (design, core)
+
+### Dec 20, code freeze
+
+- [ ] Portable offline booth release installed on both laptops and the spare. (core)
+- [ ] Comfort playtest with 5 outside players ([protocol](#comfort)); fix only the top issues. (design)
+- [ ] Window frame from 우드락 and 시트지, sized to the play monitor, not covering the webcam. (world)
+- [ ] One-page poster: how to play, and why the screen looks like a window. (design)
+
+### Dec 22 to 29
+
+- [ ] Buy snacks (week of the festival). (all)
+- [ ] Full rehearsal in a classroom: set up in 30 minutes, run the 1부 flow for 20 minutes with outside players. (all)
+- [ ] Day-of checklist by Dec 27: setup order for 08:30 to 09:00, who stands where, what to do if a laptop or device fails. (design)
+- [ ] Check the application result and the assigned room when announced; the room decides where the monitors, the 전자칠판 and the queue go. (design)
 
 ## Streams
 
@@ -71,7 +129,7 @@ Source of truth: [validation](../validation.md), reference machine RTX 4070 Lapt
 Goal: swinging feels good within the first ten seconds and gets better with skill.
 
 - [ ] Playtest the existing swing end to end; list the five worst things. (Swing, with a second player)
-- [ ] Always something to grab: anchor assist (snap the aim ray to the best attach point inside a small cone) and a visible reticle that turns solid when a hit is possible. (Swing)
+- [ ] Always something to grab: anchor assist exists; still check that a visible reticle turns solid when a hit is possible. (Swing)
 - [ ] Speed techniques that reward skill: release boost at the bottom of the arc, web zip to a point, air dive. Add one at a time, each with a decision or a feel note. (Swing, Design)
 - [ ] Ground start without attach-pull jerk; landing and rooftop running. (Swing)
 - [ ] Hero in view: first person only for v1 (the camera is the eyes, so head tracking stays correct). Arms and hands with web shooters, a firing pose, a swing pose, arms that reach toward the anchor. (Character)
@@ -84,7 +142,7 @@ Goal: swinging feels good within the first ten seconds and gets better with skil
 Current state: BLE gamepad as an HID joystick (`ControllerMotionInput`), wrist device protocol over UDP (`WristUdpReceiver`), serial receiver compiled out under .NET Standard 2.1, bridge and firmware kept outside the repo. See [decision 0005](../decisions/0005-hardware-input-contract.md) and [hardware/README](../../hardware/README.md).
 
 - [ ] Put firmware and the serial/BLE-to-UDP bridge in `hardware/` with pinned dependencies, so anyone can reproduce the device. (Hardware)
-- [ ] Wire aim and fire into the swing (`HandAimController.Fired` to `WebSwingMotionInput.TryFire`). (Hardware + Swing)
+- [ ] Wire aim and fire into the swing. Fire is wired through `MouseWebShooter` (fires once); hold and release is the Nov 29 booth task. (Hardware + Swing)
 - [ ] One input facade so the game asks "what is the player doing" (move, aim ray, fire, release, recenter) and does not care which device answers. Priority: wrist, then mouse; controller for movement. (Core defines, Hardware implements)
 - [ ] On-screen device status: connected, calibrated, last packet age, battery if available, with one-key recalibration. (Hardware + Design)
 - [ ] Latency and drop test with a real device: packets per second, worst gap, behaviour on disconnect (fall back to mouse, never freeze). (Hardware)
@@ -133,5 +191,8 @@ Events other areas must raise (Swing owns the list, Audio listens): `WebFired`, 
 | Hardware not reproducible | Firmware and bridge live in a personal project | Move into `hardware/` |
 | Too many agents, too few reviewers | Review becomes the bottleneck | Small PRs, area owners review, agents never merge |
 | Heavy setup excludes people | Source build needs several GB and a Unity licence | Playtest from the ZIP; only builders need Unity |
-| Scope growth | Multiplayer and story can swallow the schedule | Decisions 0003 and 0004; M1 is a single route |
+| Scope growth | 1v1 and stretch features can swallow the schedule | Go or no-go on Dec 15; cut stretch tasks before moving the Dec 20 freeze |
+| Silence on `main` | Nothing merged between Oct 21 and Nov 11 | Weekly check-in reporting merges only |
+| Decision 0003 vs the 1v1 plan | 0003 recommends no live multiplayer | Update 0003 or agree now that 2부 falls back to a synced race |
+| Wrist device fails at the booth | A run stops in front of the queue | Mouse fallback with no restart; a charged spare device |
 | Windows only | Release and tracker are Windows x64 | Accept and say so; do not promise Mac or web |

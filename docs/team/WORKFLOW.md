@@ -56,6 +56,7 @@ Everyone may use AI agents (Claude, Codex, Copilot, anything). The rules are abo
 - **Personal setup stays personal.** Do not commit your own agent configuration, scratch plans, session logs, local paths, usernames, or tool-specific file naming. Examples of things that stay out: `PLAN.md`, `.claude/`, `.cursor/`, `*.local.*`, vault or wiki notes. If a note is useful to everyone, rewrite it as a proper file under `docs/`.
 - Branch and commit names follow rule 2 above, whichever tool created them.
 - **One agent, one branch, one area.** Never run two agents on the same files. Agents do not edit areas they were not asked to.
+- **The issue is the lock.** Claim work by being assigned its issue, announce it with a draft PR listing its paths, and name the agent and model in the PR. Full steps: [AGENTS.md](../../AGENTS.md#parallel-work-with-ai-agents).
 - **Agents do not merge, tag, force-push, change repo settings, or edit shared docs** (this file, ROLES, decisions marked Accepted) unless you told them to for that specific change.
 - Do not paste secrets, tokens, or your webcam/calibration data to an agent or into the repo.
 - If an agent invents numbers ("tested, 60 fps"), the PR is rejected until the real measurement is there.
