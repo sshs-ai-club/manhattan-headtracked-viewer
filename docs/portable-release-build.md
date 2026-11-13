@@ -1,7 +1,10 @@
 # Reproduce the portable Windows distribution
 
 This is a maintainer workflow. End users only download the release ZIP and run
-`Run-HeadTrackedDemo.cmd`.
+`Run-HeadTrackedDemo.cmd`. Do not send playtesters through Unity setup, source
+pack downloads, or tracker installation.
+
+## Reproduce the existing release
 
 Use Windows x64, Python 3.13.5 with pip, Git and the pinned technology checkout.
 The city player is the unchanged, verified v0.1.0 artifact pinned in
@@ -48,7 +51,54 @@ check named camera enumeration and lifecycle cleanup, and retain a scoped report
 Use a separate calibration directory during QA and preserve personal settings.
 Do not publish raw camera frames, personal calibration or machine-specific logs.
 
-For a future changed Unity player, build and validate that player normally,
-update `portable-player.json` to its exact artifact/revision/digest, then prepare
-the portable distribution. Never rewrite the embedded player identity to make
-an older binary appear to come from a newer source commit.
+## Package a newly validated player
+
+First build and validate the intended Windows player with the normal build
+workflow. Package it with `tools/package_windows.py`, which checks its embedded
+identity, source manifest and notices. Keep the resulting player ZIP and its
+`.integrity.json` receipt outside source control. Do not use an arbitrary ZIP or
+edit an old binary's identity to make it appear to contain current gameplay.
+
+You can pass an explicit pin without changing the checked-in historical pin.
+For example, after producing `.cache/player-current.zip` and its receipt:
+
+```powershell
+$receipt = Get-Content .cache/player-current.integrity.json -Raw | ConvertFrom-Json
+@{
+    sha256 = (Get-FileHash .cache/player-current.zip -Algorithm SHA256).Hash.ToLowerInvariant()
+    viewerRevision = $receipt.buildIdentity.viewerRevision
+} | ConvertTo-Json | Set-Content .cache/player-current.json -Encoding UTF8
+```
+
+The pin must contain a lowercase 64-character `sha256` and a lowercase
+40-character `viewerRevision`. Duplicate JSON keys, missing inputs and malformed
+digests are rejected. Additional descriptive fields such as `version` and `url`
+are allowed, but no URL is downloaded by the packager. A digest of an unvalidated
+ZIP is not release qualification.
+
+Prepare a fresh matching tracker stage as above, and stage a Windows guide that
+accurately describes this player and its controls. The historical guide describes
+v0.1.1 flight only; do not ship that claim unchanged for a new swing build.
+Then use an explicit distribution version, for example:
+
+```powershell
+python tools/package_portable_windows.py --base-player-zip .cache/player-current.zip --player-pin .cache/player-current.json --distribution-version v0.2.0-preview.1 --runtime-stage .cache/portable-stage --output Builds/Distribution/ManhattanViewer-v0.2.0-preview.1-Windows-x64.zip
+```
+
+`--distribution-version` is required with `--player-pin`. It accepts 1–64 ASCII
+letters, digits, dots, underscores, plus or minus signs, starting with a letter
+or digit. Omitting both flags keeps the historical `portable-player.json` and
+`v0.1.1` defaults. The original clean-checkout/source comparison still applies;
+on current sources the historical player will be rejected if the Unity source,
+source manifest or technology pin differs. The explicit pin is read once and the
+same snapshot is used for the source check and archive validation. Receipt fields
+keep the distribution revision/version separate from the unchanged embedded
+player identity. Player and tracker technology revisions must still match.
+
+Repeat the extraction and two-mode Windows checks above for the exact resulting
+ZIP. Record download bytes, extraction time, and time until the city is usable
+on a clean target machine before claiming a first-use improvement. This tooling
+avoids end-user developer setup when a validated player is distributed; it does
+not create that player, reduce city data, add remote streaming, or establish a
+measured loading-time improvement by itself. Publishing a release remains a
+separate human action.

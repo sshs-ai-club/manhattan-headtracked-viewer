@@ -14,6 +14,32 @@ from build_portable_tracker import PYTHON_PATHS, CMD_ENTRY, MODEL_LOADING_PATCH
 ROOT = Path(__file__).resolve().parents[1]
 SHIPPING_TOOLS = {'Run-HeadTrackedDemo.cmd','tools/run_demo.ps1','tools/portable_check.py','tools/portable-runtime.json'}
 PRIVATE = base.PRIVATE_NAMES | {'monitor_hint.json','direct_url.json','pyvenv.cfg'}
+LEGACY_DISTRIBUTION_VERSION = 'v0.1.1'
+
+
+def validate_player_pin(pin):
+    if not isinstance(pin, dict): raise ValueError('Player pin must be a JSON object')
+    for key, length in (('sha256', 64), ('viewerRevision', 40)):
+        value = pin.get(key)
+        if not isinstance(value, str) or not re.fullmatch('[0-9a-f]{'+str(length)+'}', value):
+            raise ValueError('Player pin '+key+' must be a full lowercase hexadecimal digest')
+    # Keep one independent snapshot for the source guard and archive validation.
+    return {key: pin[key] for key in ('sha256', 'viewerRevision')}
+
+
+def load_player_pin(path):
+    path = Path(path)
+    base.reject_link(path)
+    return validate_player_pin(base.read_json(path))
+
+
+def distribution_version(version, explicit_pin=False):
+    if version is None:
+        if explicit_pin: raise ValueError('An explicit player pin requires --distribution-version')
+        return LEGACY_DISTRIBUTION_VERSION
+    if not isinstance(version, str) or not re.fullmatch('[A-Za-z0-9][A-Za-z0-9._+-]{0,63}', version):
+        raise ValueError('Distribution version must be a 1-64 character release identifier without spaces or slashes')
+    return version
 
 
 def omitted(name):
@@ -92,9 +118,10 @@ def validate_runtime(files):
     return manifest
 
 
-def package(archive, stage, output, revision, version='v0.1.1'):
+def package(archive, stage, output, revision, version=None, *, player_pin=None):
     if not re.fullmatch('[0-9a-f]{40}',revision): raise ValueError('Distribution revision must be a full Git SHA')
-    pin=json.loads((ROOT/'tools/portable-player.json').read_text(encoding='utf-8'))
+    version=distribution_version(version, explicit_pin=player_pin is not None)
+    pin=load_player_pin(ROOT/'tools/portable-player.json') if player_pin is None else validate_player_pin(player_pin)
     inherited, records=read_base(archive,pin)
     files=staged_files(stage)
     manifest=validate_runtime(files)
@@ -138,15 +165,26 @@ def package(archive, stage, output, revision, version='v0.1.1'):
             'distributionRevision':revision,'playerRevision':inherited['buildIdentity']['viewerRevision']}
 
 
-if __name__=='__main__':
+def main(argv=None):
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--base-player-zip',type=Path,required=True)
     parser.add_argument('--runtime-stage',type=Path,required=True)
     parser.add_argument('--output',type=Path,required=True)
-    args=parser.parse_args()
-    revision=subprocess.check_output(['git','-C',str(ROOT),'rev-parse','HEAD'],text=True).strip()
-    if subprocess.check_output(['git','-C',str(ROOT),'status','--porcelain','--untracked-files=normal'],text=True).strip():
-        raise SystemExit('Commit release tooling and guides before packaging.')
-    pin=json.loads((ROOT/'tools/portable-player.json').read_text(encoding='utf-8'))
-    subprocess.run(['git','-C',str(ROOT),'diff','--exit-code',pin['viewerRevision'],revision,'--','ManhattanViewer','assets/source-manifest.json','tools/technology-version.json'],check=True)
-    print(json.dumps(package(args.base_player_zip,args.runtime_stage,args.output,revision),indent=2))
+    parser.add_argument('--player-pin',type=Path,help='Validated player pin JSON; defaults to tools/portable-player.json')
+    parser.add_argument('--distribution-version',help='Release identifier; required with --player-pin, otherwise defaults to v0.1.1')
+    args=parser.parse_args(argv)
+    try:
+        version=distribution_version(args.distribution_version, explicit_pin=args.player_pin is not None)
+        pin=load_player_pin(args.player_pin if args.player_pin is not None else ROOT/'tools/portable-player.json')
+        revision=subprocess.check_output(['git','-C',str(ROOT),'rev-parse','HEAD'],text=True).strip()
+        if subprocess.check_output(['git','-C',str(ROOT),'status','--porcelain','--untracked-files=normal'],text=True).strip():
+            raise ValueError('Commit release tooling and guides before packaging.')
+        subprocess.run(['git','-C',str(ROOT),'diff','--exit-code',pin['viewerRevision'],revision,'--','ManhattanViewer','assets/source-manifest.json','tools/technology-version.json'],check=True)
+        result=package(args.base_player_zip,args.runtime_stage,args.output,revision,version,player_pin=pin)
+    except (ValueError, OSError, KeyError, subprocess.CalledProcessError, zipfile.BadZipFile) as error:
+        parser.exit(1, 'Packaging failed: '+str(error)+'\n')
+    print(json.dumps(result,indent=2))
+
+
+if __name__=='__main__':
+    main()
