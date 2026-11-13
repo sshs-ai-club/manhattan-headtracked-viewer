@@ -145,7 +145,7 @@ namespace WebShooter.Swing.Tests
                 Assert.That(screen.parent, Is.EqualTo(body.transform)); Assert.That(eye.parent, Is.EqualTo(body.transform));
                 Assert.That(screen.localPosition.z, Is.EqualTo(.8f));
                 Assert.That(eye.localPosition, Is.EqualTo(new Vector3(.1f, .03f, 0)));
-                Assert.That(body.transform.childCount, Is.EqualTo(2));
+                Assert.That(pivot.Transform, Is.Null); // Empty pivot destruction is deferred in a Player.
             }
             finally { pivot.Restore(); Object.DestroyImmediate(body); }
         }
