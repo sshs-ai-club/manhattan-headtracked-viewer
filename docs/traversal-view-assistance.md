@@ -7,8 +7,8 @@ Issue #21. **OFF by default each session.** Press Esc to open Settings. The sepa
 - Wall-running ascent above 2 m/s gradually looks up, reaching a target of 55 degrees at 14 m/s (full strength).
 - Airborne descent above 6 m/s gradually looks down, reaching a target of 35 degrees at 24 m/s. Grounding, ordinary ascent, pause, lost focus and flight mode return toward neutral.
 - Horizontal travel above 3 m/s banks into a corner, bounded to 8 degrees at full strength. There is no automatic yaw or route following.
-- Default strengths after opt-in are 60% pitch and 35% bank. The targets pass through two cascaded exponential filters: pitch frequency 0.8/s and bank 2/s. Exact sample integration avoids Euler overshoot. For arbitrary bounded target changes, each axis stays inside its target range; pitch rate is below 27 degrees/s and acceleration below 66 degrees/s²; bank below 12 degrees/s and 73 degrees/s². These are mathematical bounds, not measured comfort results or combined-axis limits.
-- Applied observer look from any input adapter suppresses assistance targets immediately and holds them neutral for 0.8 seconds after the last change. Existing motion decays smoothly rather than snapping. Manual look still moves immediately and owns the vertical poles. This observes the applied view rotation rather than consuming the input source twice.
+- Default strengths after opt-in are 60% pitch and 35% bank. The targets pass through two cascaded exponential filters: pitch frequency 0.8/s and bank 2/s. Exact sample integration avoids Euler overshoot. For arbitrary bounded target changes, each axis stays inside its target range; pitch rate is below 27 degrees/s and acceleration below 66 degrees/s²; bank below 12 degrees/s and 73 degrees/s². These are autonomous filter bounds, not measured comfort results or combined-axis limits; explicit resets and manual-pole clipping are excluded.
+- Applied observer look from any input adapter suppresses assistance targets immediately and holds them neutral for 0.8 seconds after the last change. Existing motion decays smoothly rather than snapping. Manual look still moves immediately and owns the vertical poles. Clipping discards hidden pitch from both filter stages so moving away from a pole cannot reveal stored tilt and cancel the user’s look. This observes the applied view rotation rather than consuming the input source twice.
 - Frame gaps above 100 ms discard motion cues and clear heading history; filter time advances by at most 100 ms. Teleports reset cues immediately. Explicit component destruction/disable restores the view immediately; the normal OFF control uses the smooth path.
 
 ## Tracking and ownership
@@ -21,9 +21,13 @@ The installer skips benchmarks, scripted/agent traversal and test processes so h
 
 ## Validation and acceptance
 
-`TraversalViewAssistanceTests` covers climb/fall/landing, opt-out, strength, invalid samples, opposite corners, manual holdoff, reset, stalls, 30/60/144 Hz reversals, frame-rate agreement, vertical poles, screen-space invariance, calibration retention and hierarchy ownership.
+`TraversalViewAssistanceTests` covers climb/fall/landing, opt-out, strength, invalid samples, opposite corners, manual holdoff, reset, stalls, 30/60/144 Hz reversals, frame-rate agreement, vertical poles, screen-space invariance, calibration retention and hierarchy ownership, sub-degree manual look, pole release and the pinned display’s actual LateUpdate/frozen-eye matrix application.
 
-At initial publication: **Unity tests, live tracking, Windows rendering, combined minimal-grip play and human comfort are not tested.** Portable Python checks do not compile this C# feature. The transform fixture is not a live tracker or visual acceptance test.
+Portable validation: all 172 Python cases completed (147 pass, 25 environment-dependent skips), repository pins/source manifest, Python syntax and whitespace checks pass. The first run failed because the GLB fixture was an LFS pointer; its existing local payload was verified against the manifest SHA-256 and the entire suite rerun. PowerShell is unavailable in this cloud environment.
+
+**Unity tests, live tracking, Windows rendering, combined minimal-grip play and human comfort are not tested here.** Portable Python checks do not compile this C# feature. The transform and direct package fixtures are not a live tracker or visual acceptance test. PR CI run 43496551641 stopped before tests: the hosted Ubuntu 26.04 runner cannot install pinned Python 3.13.5. No workflow/package pins were changed in this feature.
+
+Independent source review identified and corrected slow-look detection below Unity’s Quaternion.Angle dead zone and hidden pitch reappearing when leaving a manual pole. Regression cases exercise both defects.
 
 Before human review, run `tools/test.ps1 -DataOnly` and `tools/test.ps1`, then exercise the normal Windows player: OFF/ON/OFF, both slider endpoints, tracking/window/surface switches, changing physical distance, recapture, focus loss, controller/mouse look, teleport, alternating corners, wall ascent, fall and landing. Compare unchanged restricted-input route results separately. Measure frame time and check the actual tracked screen corners/eye relation; do not infer optical correctness solely from appearance.
 

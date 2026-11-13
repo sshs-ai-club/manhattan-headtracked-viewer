@@ -27,6 +27,7 @@ namespace WebShooter.Swing.Tests
             Assert.That(Settle(f, Vector3.up * 20, true, true, true, 0, 0), Is.EqualTo(Vector2.zero));
             Assert.That(Settle(f, new Vector3(float.NaN, 0, 0), true, true), Is.EqualTo(Vector2.zero));
             Assert.That(Settle(f, Vector3.up * 20, true, true, true, float.NaN, float.PositiveInfinity), Is.EqualTo(Vector2.zero));
+            Assert.That(Settle(f, Vector3.one * float.MaxValue, true, true), Is.EqualTo(Vector2.zero));
             Assert.That(f.Step(float.NaN, Vector3.up, true, true, true, false, 1, 1), Is.EqualTo(Vector2.zero));
         }
         [Test] public void LeftAndRightCornersBankWithOppositeSignsAndNeverBankAtRest()
@@ -49,6 +50,24 @@ namespace WebShooter.Swing.Tests
             Assert.That(f.Angles, Is.EqualTo(Vector2.zero));
             Assert.That(Settle(f, Vector3.up * 20, true, true).x, Is.LessThan(-54));
             Assert.That(Settle(f, Vector3.up * 20, true, true, false).magnitude, Is.LessThan(.001));
+        }
+        [Test] public void SlowAppliedLookIsDetectedBelowQuaternionAngleDeadZone()
+        {
+            foreach (float step in new[] { .01f, .09f, .1f })
+            {
+                var previous = Quaternion.Euler(30, 75, 0); var f = new TraversalViewFilter();
+                for (int i = 1; i <= 120; i++)
+                {
+                    var current = Quaternion.Euler(30 + step * i, 75 + step * i, 0);
+                    bool manual = TraversalViewAssistance.ManualLookChanged(previous, current);
+                    Assert.That(manual, Is.True);
+                    f.Step(1f / 60, Vector3.up * 20, true, true, true, manual, 1, 1); previous = current;
+                }
+                Assert.That(f.Angles, Is.EqualTo(Vector2.zero));
+                Assert.That(TraversalViewAssistance.ManualLookChanged(previous, previous), Is.False);
+                Assert.That(TraversalViewAssistance.ManualLookChanged(previous,
+                    new Quaternion(-previous.x, -previous.y, -previous.z, -previous.w)), Is.False);
+            }
         }
         [Test] public void ResetRemovesOldFallAndTurnHistoryAndStallsCannotJump()
         {
@@ -84,6 +103,24 @@ namespace WebShooter.Swing.Tests
             Assert.That((a.Angles - b.Angles).magnitude, Is.LessThan(.001));
             Assert.That(Quaternion.Angle(a.Rotation(-85), Quaternion.identity), Is.LessThan(.001));
         }
+        [Test] public void LeavingEitherPoleDoesNotReleaseHiddenTiltAndCancelManualLook()
+        {
+            foreach (bool wall in new[] { true, false })
+            {
+                var f = new TraversalViewFilter(); var velocity = Vector3.up * (wall ? 20 : -30);
+                Settle(f, velocity, wall, true); float pitch = wall ? -70 : 70;
+                f.Rotation(pitch); Assert.That(Mathf.Abs(f.Angles.x), Is.EqualTo(10));
+                f.Step(1f / 60, velocity, wall, true, true, true, 1, 0);
+                pitch += wall ? 5 : -5; f.Rotation(pitch);
+                Assert.That(Mathf.Abs(pitch + f.Angles.x), Is.LessThan(75.01f));
+                for (int i = 0; i < 120; i++)
+                {
+                    float previous = f.Angles.x;
+                    f.Step(1f / 60, velocity, wall, true, true, false, 1, 0); f.Rotation(pitch);
+                    Assert.That(Mathf.Abs(f.Angles.x - previous), Is.LessThan(.5f), "No jump when holdoff expires");
+                }
+            }
+        }
         [Test] public void CommonPivotPreservesScreenSpaceAndObserverAndRestoresCalibrationEdits()
         {
             var body = new GameObject("observer"); var screen = new GameObject("screen").transform;
@@ -111,6 +148,47 @@ namespace WebShooter.Swing.Tests
                 Assert.That(body.transform.childCount, Is.EqualTo(2));
             }
             finally { pivot.Restore(); Object.DestroyImmediate(body); }
+        }
+        [Test] public void PinnedDisplayStillAppliesSameEyeAndOffAxisMatrixWithTrackingFrozen()
+        {
+            // Reflection avoids changing the shared test asmdef solely for this package integration fixture.
+            var type = System.Type.GetType("HeadTracked.Display.HeadTrackedDisplay, HeadTracked.Display", true);
+            var body = new GameObject("observer"); var screen = new GameObject("screen").transform;
+            var eye = new GameObject("eye"); screen.SetParent(body.transform, false); eye.transform.SetParent(body.transform, false);
+            screen.localPosition = Vector3.forward * .6f; var camera = eye.AddComponent<Camera>(); camera.enabled = false;
+            var display = eye.AddComponent(type);
+            type.GetMethod("Configure").Invoke(display, new object[] { screen, null });
+            var late = type.GetMethod("LateUpdate", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+            late.Invoke(display, null);
+            var projection = camera.projectionMatrix;
+            var eyeMeters = (Vector3)type.GetProperty("EyePositionMeters").GetValue(display);
+            type.GetProperty("TrackingEnabled").SetValue(display, false);
+            var pivot = new TraversalViewPivot(body.transform, screen, eye.transform);
+            try
+            {
+                pivot.Transform.localRotation = Quaternion.Euler(32, 0, -7); late.Invoke(display, null);
+                Assert.That(camera.projectionMatrix, Is.EqualTo(projection));
+                Assert.That(Vector3.Distance(screen.InverseTransformPoint(eye.transform.position), eyeMeters), Is.LessThan(.00001));
+                Assert.That(Quaternion.Angle(camera.transform.rotation, screen.rotation), Is.LessThan(.001));
+                Assert.That(body.transform.rotation, Is.EqualTo(Quaternion.identity));
+                pivot.Restore(); late.Invoke(display, null);
+                Assert.That(camera.projectionMatrix, Is.EqualTo(projection));
+            }
+            finally { pivot.Restore(); Object.DestroyImmediate(body); }
+        }
+        [Test] public void RestorationDoesNotReclaimAChildMovedByAnotherOwner()
+        {
+            var body = new GameObject("body"); var other = new GameObject("other owner");
+            var screen = new GameObject("screen").transform; var eye = new GameObject("eye").transform;
+            screen.SetParent(body.transform, false); eye.SetParent(body.transform, false);
+            var pivot = new TraversalViewPivot(body.transform, screen, eye);
+            try
+            {
+                eye.SetParent(other.transform, false); Assert.That(pivot.OwnsChildren, Is.False);
+                pivot.Restore(); Assert.That(eye.parent, Is.EqualTo(other.transform));
+                Assert.That(screen.parent, Is.EqualTo(body.transform));
+            }
+            finally { pivot.Restore(); Object.DestroyImmediate(body); Object.DestroyImmediate(other); }
         }
         [Test] public void AnotherOwnersHierarchyCannotBeClaimed()
         {

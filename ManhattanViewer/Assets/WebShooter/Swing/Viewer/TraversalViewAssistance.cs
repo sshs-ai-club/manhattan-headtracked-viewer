@@ -18,7 +18,7 @@ namespace WebShooter.Swing
             if (dt > .1f) { active = false; previousHorizontal = Vector3.zero; }
             dt = Mathf.Min(dt, .1f); // Never catch up a stalled frame with a large camera rotation.
             bool finite = float.IsFinite(velocity.x) && float.IsFinite(velocity.y) && float.IsFinite(velocity.z);
-            active &= finite;
+            active &= finite && float.IsFinite(velocity.sqrMagnitude);
             if (manualLook) manualHold = .8f;
             bool suppressed = manualHold > 0;
             manualHold = Mathf.Max(0, manualHold - dt);
@@ -46,7 +46,13 @@ namespace WebShooter.Swing
         {
             // Manual input owns the poles. Assistance cannot tip the combined view past them.
             float low = Mathf.Min(0, -80 - manualPitch), high = Mathf.Max(0, 80 - manualPitch);
-            return Quaternion.Euler(Mathf.Clamp(Angles.x, low, high), 0, Angles.y);
+            float applied = Mathf.Clamp(Angles.x, low, high);
+            if (applied != Angles.x)
+            {
+                // Discard hidden tilt at a pole; it must not cancel manual movement away from the pole.
+                first.x = applied; Angles = new Vector2(applied, Angles.y);
+            }
+            return Quaternion.Euler(applied, 0, Angles.y);
         }
     }
 
@@ -55,6 +61,8 @@ namespace WebShooter.Swing
     {
         public Transform Transform { get; private set; }
         private readonly Transform observer, screen, camera;
+        public bool OwnsChildren => Transform != null && screen != null && camera != null &&
+            screen.parent == Transform && camera.parent == Transform;
         public TraversalViewPivot(Transform body, Transform plane, Transform eye)
         {
             if (body == null || plane == null || eye == null || plane == eye ||
@@ -102,9 +110,15 @@ namespace WebShooter.Swing
             if (FindFirstObjectByType<TraversalViewAssistance>() == null)
                 new GameObject("Traversal View Assistance").AddComponent<TraversalViewAssistance>();
         }
+        public static bool ManualLookChanged(Quaternion previous, Quaternion current)
+        {
+            // Quaternion.Angle rounds small rotations to zero (~0.16 degrees), losing slow mouse look.
+            var delta = Quaternion.Inverse(previous) * current;
+            return new Vector3(delta.x, delta.y, delta.z).sqrMagnitude > 1e-10f;
+        }
         private void Update()
         {
-            if (pivot != null && pivot.Transform == null) Detach();
+            if (pivot != null && !pivot.OwnsChildren) { AssistanceEnabled = false; Detach(); }
             if (app == null)
             {
                 if (Time.unscaledTime < nextSearch) return;
@@ -126,7 +140,7 @@ namespace WebShooter.Swing
             if (pivot == null) return;
             var rotation = app.Flight.transform.rotation;
             // Observe applied manual look from any input adapter; do not sample/consume input a second time.
-            bool manual = sampled && Quaternion.Angle(lastRotation, rotation) > .01f;
+            bool manual = sampled && ManualLookChanged(lastRotation, rotation);
             lastRotation = rotation; sampled = true;
             bool active = AssistanceEnabled && Application.isFocused && motion.Enabled && !motion.Paused &&
                 app.KeyboardInput != null && app.KeyboardInput.InputEnabled && app.KeyboardInput.Captured;
