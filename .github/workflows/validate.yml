@@ -6,7 +6,9 @@ permissions:
   contents: read
 jobs:
   portable-checks:
-    runs-on: ubuntu-latest
+    # Python 3.13.5 has a published Ubuntu 24.04 build, but not a 26.04 build.
+    # Keep this image compatible with the exact Python pin below.
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
         with:
