@@ -1,6 +1,8 @@
 import hashlib
 import json
 from pathlib import Path
+import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -120,6 +122,149 @@ class PortableReleaseTests(unittest.TestCase):
         for changed in (b'changed upstream', source+source):
             with self.assertRaisesRegex(ValueError,'expression differs'):
                 portable_tracker_source(changed)
+
+    def explicit_pin(self):
+        path=self.root/'current-player.json'
+        path.write_text((self.root/'tools/portable-player.json').read_text())
+        return path
+
+    def cli_args(self, pin=None, version=None):
+        args=['--base-player-zip',str(self.archive),'--runtime-stage',str(self.stage),
+              '--output',str(self.root/'release.zip')]
+        if pin is not None: args.extend(['--player-pin',str(pin)])
+        if version is not None: args.extend(['--distribution-version',version])
+        return args
+
+    def test_explicit_pin_preserves_identity_without_changing_default(self):
+        pin=portable.load_player_pin(self.explicit_pin())
+        default=self.root/'tools/portable-player.json'
+        default.write_text(json.dumps({'sha256':'0'*64,'viewerRevision':'9'*40}))
+        unchanged=default.read_bytes()
+        result=portable.package(self.archive,self.stage,self.root/'release.zip',self.revision,
+                                'v0.2.0-preview.1',player_pin=pin)
+        with zipfile.ZipFile(self.archive) as original, zipfile.ZipFile(result['zip']) as output:
+            before=json.loads(original.read('INTEGRITY.json'))
+            after=json.loads(output.read('INTEGRITY.json'))
+            self.assertEqual(after['buildIdentity'],before['buildIdentity'])
+            self.assertEqual(after['distributionVersion'],'v0.2.0-preview.1')
+            self.assertEqual(after['baseArchiveSha256'],pin['sha256'])
+        self.assertEqual(default.read_bytes(),unchanged)
+
+    def test_validated_player_round_trip_accepts_powershell_bom_pin(self):
+        from test_package_windows import WindowsPackageTests
+        player=WindowsPackageTests('test_zip_is_reproducible_and_receipt_hashes_exact_allowed_payload')
+        self.addCleanup(player.doCleanups)
+        player.setUp()
+        built=player.package()
+        pin_path=self.root/'validated-player.json'
+        pin_path.write_text(json.dumps({'sha256':built['zipSha256'],
+                                       'viewerRevision':player.identity['viewerRevision']}),encoding='utf-8-sig')
+        self.assertTrue(pin_path.read_bytes().startswith(b'\xef\xbb\xbf'))
+        pin=portable.load_player_pin(pin_path)
+        result=portable.package(Path(built['zip']),self.stage,self.root/'release.zip',self.revision,
+                                'v0.2.0-preview.1',player_pin=pin)
+        with zipfile.ZipFile(built['zip']) as original, zipfile.ZipFile(result['zip']) as output:
+            receipt=json.loads(output.read('INTEGRITY.json'))
+            self.assertEqual(receipt['buildIdentity'],player.identity)
+            self.assertEqual(receipt['distributionVersion'],'v0.2.0-preview.1')
+            self.assertEqual(receipt['baseArchiveSha256'],built['zipSha256'])
+            resources='ManhattanViewer_Data/resources.assets'
+            self.assertEqual(output.read(resources),original.read(resources))
+            for record in receipt['files']:
+                data=output.read(record['path'])
+                self.assertEqual(len(data),record['bytes'])
+                self.assertEqual(hashlib.sha256(data).hexdigest(),record['sha256'])
+
+    def test_invalid_pin_values_and_duplicate_keys_are_rejected(self):
+        good=portable.load_player_pin(self.explicit_pin())
+        invalid=[None,[],{},dict(good,sha256=True),dict(good,sha256='A'*64),
+                 dict(good,viewerRevision='main'),dict(good,viewerRevision='1'*39)]
+        for value in invalid:
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                portable.validate_player_pin(value)
+        path=self.root/'duplicate.json'
+        path.write_text('{"sha256":"'+good['sha256']+'","sha256":"'+good['sha256']+'","viewerRevision":"'+self.viewer+'"}')
+        with self.assertRaisesRegex(ValueError,'Duplicate JSON key'): portable.load_player_pin(path)
+        with self.assertRaises(FileNotFoundError): portable.load_player_pin(self.root/'missing.json')
+
+    def test_explicit_pin_requires_valid_explicit_distribution_version(self):
+        pin=portable.load_player_pin(self.explicit_pin())
+        for version in (None,'','../release','v1\n','x'*65,True):
+            with self.subTest(version=version), self.assertRaises(ValueError):
+                portable.package(self.archive,self.stage,self.root/'release.zip',self.revision,
+                                 version,player_pin=pin)
+        self.assertFalse((self.root/'release.zip').exists())
+
+    def test_explicit_pin_keeps_archive_and_identity_guards(self):
+        pin=portable.load_player_pin(self.explicit_pin())
+        for changed,message in ((dict(pin,sha256='0'*64),'checksum'),
+                                (dict(pin,viewerRevision='9'*40),'identity')):
+            with self.subTest(message=message), self.assertRaisesRegex(ValueError,message):
+                portable.package(self.archive,self.stage,self.root/'release.zip',self.revision,
+                                 'v0.2.0',player_pin=changed)
+
+    def test_cli_uses_one_pin_snapshot_for_source_guard_and_package(self):
+        path=self.explicit_pin()
+        def changed_after_guard(*args,**kwargs):
+            path.write_text('{}')
+        with mock.patch.object(portable.subprocess,'check_output',side_effect=[self.revision,'']), \
+             mock.patch.object(portable.subprocess,'run',side_effect=changed_after_guard) as compare, \
+             mock.patch('builtins.print'):
+            portable.main(self.cli_args(path,'v0.2.0'))
+        compare.assert_called_once_with(['git','-C',str(self.root),'diff','--exit-code',self.viewer,self.revision,
+                                        '--','ManhattanViewer','assets/source-manifest.json','tools/technology-version.json'],check=True)
+        with zipfile.ZipFile(self.root/'release.zip') as output:
+            self.assertEqual(json.loads(output.read('INTEGRITY.json'))['distributionVersion'],'v0.2.0')
+
+    def test_cli_legacy_defaults_are_preserved(self):
+        with mock.patch.object(portable.subprocess,'check_output',side_effect=[self.revision,'']), \
+             mock.patch.object(portable.subprocess,'run'), mock.patch('builtins.print'):
+            portable.main(self.cli_args())
+        with zipfile.ZipFile(self.root/'release.zip') as output:
+            self.assertEqual(json.loads(output.read('INTEGRITY.json'))['distributionVersion'],'v0.1.1')
+
+    def test_cli_rejects_dirty_source_or_source_drift_before_packaging(self):
+        path=self.explicit_pin()
+        for status,error in ((' M changed.py',None),('',subprocess.CalledProcessError(1,['git','diff']))):
+            with self.subTest(status=status), \
+                 mock.patch.object(portable.subprocess,'check_output',side_effect=[self.revision,status]), \
+                 mock.patch.object(portable.subprocess,'run',side_effect=error), \
+                 mock.patch.object(portable,'package') as package, \
+                 mock.patch('sys.stderr'), self.assertRaises(SystemExit) as stopped:
+                portable.main(self.cli_args(path,'v0.2.0'))
+            self.assertEqual(stopped.exception.code,1)
+            package.assert_not_called()
+
+    def test_cli_rejects_missing_pin_or_version_before_git(self):
+        path=self.explicit_pin()
+        for pin,version in ((path,None),(self.root/'missing.json','v0.2.0'),(path,'bad/version')):
+            with self.subTest(pin=pin,version=version), \
+                 mock.patch.object(portable.subprocess,'check_output') as git, \
+                 mock.patch('sys.stderr'), self.assertRaises(SystemExit) as stopped:
+                portable.main(self.cli_args(pin,version))
+            self.assertEqual(stopped.exception.code,1)
+            git.assert_not_called()
+
+    @unittest.skipUnless(shutil.which('git'),'Git is required for the source-drift integration check')
+    def test_real_git_source_guard_rejects_changed_unity_source(self):
+        def git(*args):
+            return subprocess.check_output(['git','-C',str(self.root),*args],stderr=subprocess.STDOUT,text=True).strip()
+        git('init','--quiet')
+        source=self.root/'ManhattanViewer/fixture.txt'; source.parent.mkdir(); source.write_text('original')
+        git('add','.')
+        git('-c','user.name=Fixture','-c','user.email=fixture@example.invalid','commit','-qm','Fixture baseline')
+        original=git('rev-parse','HEAD')
+        source.write_text('changed')
+        git('add','.')
+        git('-c','user.name=Fixture','-c','user.email=fixture@example.invalid','commit','-qm','Changed source')
+        # A tracked tooling-only pin is allowed, but cannot authorize changed player sources.
+        path=self.root/'tools/portable-player.json'
+        pin=json.loads(path.read_text()); pin['viewerRevision']=original; path.write_text(json.dumps(pin))
+        git('add','.')
+        git('-c','user.name=Fixture','-c','user.email=fixture@example.invalid','commit','-qm','Pin baseline')
+        with mock.patch.object(portable,'package') as package, mock.patch('sys.stderr'), self.assertRaises(SystemExit):
+            portable.main(self.cli_args(path,'v0.2.0'))
+        package.assert_not_called()
 
 
 if __name__=='__main__': unittest.main()
