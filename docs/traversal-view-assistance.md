@@ -1,0 +1,30 @@
+# Experimental traversal view assistance
+
+Issue #21. **OFF by default each session.** Press Esc to open Settings. The separate panel at the upper left enables the experiment and adjusts look-up/down and corner-bank strength independently. Closing Settings resumes movement. Setting either strength to zero removes that cue; switching OFF eases to neutral and restores the original hierarchy. No calibration or preference file is changed.
+
+## Cues and comfort boundaries
+
+- Wall-running ascent above 2 m/s gradually looks up, reaching a target of 55 degrees at 14 m/s (full strength).
+- Airborne descent above 6 m/s gradually looks down, reaching a target of 35 degrees at 24 m/s. Grounding, ordinary ascent, pause, lost focus and flight mode return toward neutral.
+- Horizontal travel above 3 m/s banks into a corner, bounded to 8 degrees at full strength. There is no automatic yaw or route following.
+- Default strengths after opt-in are 60% pitch and 35% bank. The targets pass through two cascaded exponential filters: pitch frequency 0.8/s and bank 2/s. Exact sample integration avoids Euler overshoot. For arbitrary bounded target changes, each axis stays inside its target range; pitch rate is below 27 degrees/s and acceleration below 66 degrees/s²; bank below 12 degrees/s and 73 degrees/s². These are mathematical bounds, not measured comfort results or combined-axis limits.
+- Applied observer look from any input adapter suppresses assistance targets immediately and holds them neutral for 0.8 seconds after the last change. Existing motion decays smoothly rather than snapping. Manual look still moves immediately and owns the vertical poles. This observes the applied view rotation rather than consuming the input source twice.
+- Frame gaps above 100 ms discard motion cues and clear heading history; filter time advances by at most 100 ms. Teleports reset cues immediately. Explicit component destruction/disable restores the view immediately; the normal OFF control uses the smooth path.
+
+## Tracking and ownership
+
+The camera and the existing physical screen become children of an identity view pivot below the observer. Only that pivot rotates, before the pinned package's LateUpdate. The package still owns the tracked eye, camera pose and off-axis matrix. Screen-local eye XYZ, calibration, screen dimensions, physical window geometry and projection are unchanged by this rigid transform. Tracking OFF continues to freeze the head offset, not traversal. The feature does not read webcam data as gaze: the current tracker estimates eye position, not gaze direction.
+
+The observer, body, input source, collision/constraint and forces are never changed. The existing camera-based aim ray naturally follows the assisted view, so enabling the view can change what the user chooses to aim at; this is not a claim of identical closed-loop player trajectories. Physics with identical supplied actions remains untouched.
+
+The installer skips benchmarks, scripted/agent traversal and test processes so historical AI route comparisons remain unchanged. No scene, asmdef, package, firmware, v1 wire format or existing input/physics file is edited. Reparenting is refused if another owner has already changed the expected camera/screen hierarchy. Calibration changes while installed are retained on restoration.
+
+## Validation and acceptance
+
+`TraversalViewAssistanceTests` covers climb/fall/landing, opt-out, strength, invalid samples, opposite corners, manual holdoff, reset, stalls, 30/60/144 Hz reversals, frame-rate agreement, vertical poles, screen-space invariance, calibration retention and hierarchy ownership.
+
+At initial publication: **Unity tests, live tracking, Windows rendering, combined minimal-grip play and human comfort are not tested.** Portable Python checks do not compile this C# feature. The transform fixture is not a live tracker or visual acceptance test.
+
+Before human review, run `tools/test.ps1 -DataOnly` and `tools/test.ps1`, then exercise the normal Windows player: OFF/ON/OFF, both slider endpoints, tracking/window/surface switches, changing physical distance, recapture, focus loss, controller/mouse look, teleport, alternating corners, wall ascent, fall and landing. Compare unchanged restricted-input route results separately. Measure frame time and check the actual tracked screen corners/eye relation; do not infer optical correctness solely from appearance.
+
+For comfort, retain the roadmap's ten-minute route protocol with five outside players and ratings at start/five/end. Stop for discomfort. Until Core, Swing and Game design review [proposal 0009](decisions/0009-optional-traversal-view-assistance.md) and actual player evidence, this is an experimental opt-in, not a new booth default or a comfort pass.
