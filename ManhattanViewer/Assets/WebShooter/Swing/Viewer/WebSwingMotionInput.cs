@@ -414,6 +414,7 @@ namespace WebShooter.Swing
         }
         private void ApplyActions(TraversalActions a)
         {
+            Body.GripHeld=Body.Settings.gripMotor.enabled && a.active && a.fireHeld;
             Paused=!a.active;
             if(!a.active){Launch.Cancel();HandleMouseHold(false,false,false,default);ReelInput=0;JumpRequested=false;return;}
             if(a.toggleFlight){Launch.Cancel();Release();if(Enabled)Enabled=false;else Activate();}

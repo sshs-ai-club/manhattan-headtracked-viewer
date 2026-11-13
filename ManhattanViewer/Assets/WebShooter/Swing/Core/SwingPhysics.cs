@@ -10,6 +10,7 @@ namespace WebShooter.Swing
     {
         public FlowFeatures features = new FlowFeatures();
         public AirChainAssistance chain = new AirChainAssistance();
+        public GripMotorSettings gripMotor = new GripMotorSettings();
         [Tooltip("중력 가속도 (m/s^2, 아래 방향)")] public float gravity = 9.81f;
         [Tooltip("선형 공기 저항 계수 (1/s). 클수록 속도가 빨리 줄어든다")] public float airDrag = 0.05f;
         [Tooltip("최대 속도 (m/s)")] public float maxSpeed = 70f;
@@ -50,6 +51,9 @@ namespace WebShooter.Swing
         public Vector3 Anchor { get; private set; }
         public float RopeLength { get; private set; }
         public bool Grounded { get; private set; }
+        public bool GripHeld { get; set; }
+        public double GripMotorWork { get; private set; }
+        public float GripMotorAcceleration { get; private set; }
 
         public SwingPhysics(SwingSettings settings = null) => Settings = settings ?? new SwingSettings();
 
@@ -199,6 +203,7 @@ namespace WebShooter.Swing
         public void Reset(Vector3 position)
         {
             ResetSequence++;FloorContactSequence=ReelGuardSequence=0;manualSlackRequested=false;
+            GripHeld=false;GripMotorWork=0;GripMotorAcceleration=0;
             Position = position;
             Velocity = Vector3.zero;
             Grounded = position.y <= FloorY + .03f;
@@ -321,6 +326,7 @@ namespace WebShooter.Swing
         public void Step(float dt, Vector3 steer = default, float reel = 0f)
         {
             if (dt <= 0f) return;
+            if (Settings.gripMotor.enabled) { steer=Vector3.zero;reel=0;yanking=false; }
             manualSlackRequested=reel>0;
             if(reel>0 && LimitCloseReel){yanking=false;reel=0;ReelGuardSequence++;}
             if(reel > 0f) BeginYank();
@@ -354,6 +360,12 @@ namespace WebShooter.Swing
             TensionAcceleration=0;
             RopeCorrectionMetres=0;
             AdvanceYank(h);
+            GripMotorAcceleration=0;
+            if(Settings.gripMotor.enabled && GripHeld && Attached)
+            {
+                Velocity=GripRopeMotor.Apply(Velocity,Anchor-Position,h,Settings.gripMotor,out float work,out float acceleration);
+                GripMotorWork+=work;GripMotorAcceleration=acceleration;
+            }
             var chain=Settings.chain;
             Vector3 horizontal=Vector3.ProjectOnPlane(Velocity,Vector3.up);
             float redirectRate=AssistedRedirectRate;
@@ -407,6 +419,9 @@ namespace WebShooter.Swing
                 if (reel != 0f) RopeLength = Mathf.Clamp(RopeLength - reel * (reel > 0f ? Settings.reelSpeed : Settings.payoutSpeed) * h, Settings.minRopeLength, 250f);
                 Vector3 d = p - Anchor;
                 float dist = d.magnitude;
+                // The motor shortens only after actual inward integration, never by pose projection.
+                if(Settings.gripMotor.enabled && GripHeld)
+                    RopeLength=Mathf.Min(RopeLength,Mathf.Max(Settings.minRopeLength,dist));
                 if(Settings.chain.enabled && AssistStrength>0 && manualSlackRequested && attachmentAge<=Settings.chain.initialSlackSeconds*Mathf.Clamp01(AssistStrength))
                     RopeLength=Mathf.Min(RopeLength,Mathf.Max(Settings.minRopeLength,dist));
                 // Reel in only length already made slack by inward movement. No teleport or impulse.
