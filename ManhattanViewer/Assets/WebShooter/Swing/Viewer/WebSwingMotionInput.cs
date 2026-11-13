@@ -367,7 +367,7 @@ namespace WebShooter.Swing
                 if (ropeBeforeContact && !Body.Attached) { NotifyExternalRelease(); CollisionReleaseCount++; }
                 // A solid wall wins over rope length. Repeatedly projecting into
                 // the wall and back out produced violent oscillation at short ropes.
-                if (Body.Attached && Vector3.Distance(Body.Position, Body.Anchor) > Body.RopeLength + .12f)
+                if (!Body.Settings.gripMotor.enabled && Body.Attached && Vector3.Distance(Body.Position, Body.Anchor) > Body.RopeLength + .12f)
                 {
                     Release(); CollisionReleaseCount++;
                 }
@@ -414,6 +414,7 @@ namespace WebShooter.Swing
         }
         private void ApplyActions(TraversalActions a)
         {
+            Body.GripHeld=Body.Settings.gripMotor.enabled && a.active && a.fireHeld;
             Paused=!a.active;
             if(!a.active){Launch.Cancel();HandleMouseHold(false,false,false,default);ReelInput=0;JumpRequested=false;return;}
             if(a.toggleFlight){Launch.Cancel();Release();if(Enabled)Enabled=false;else Activate();}
