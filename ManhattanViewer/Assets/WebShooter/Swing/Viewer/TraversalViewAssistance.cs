@@ -35,6 +35,15 @@ namespace WebShooter.Swing
                 Filter(target.y, ref first.y, Angles.y, 2f, dt));
             return Angles;
         }
+        public static bool WallAscentCue(TraversalState state, bool attached, Vector3 velocity, Vector3 normal, Vector3 toAnchor)
+        {
+            // Minimal-grip winching can climb a wall without requesting the WASD WallRunning state.
+            if (state == TraversalState.WallRunning) return true;
+            return attached && float.IsFinite(velocity.sqrMagnitude) && float.IsFinite(normal.sqrMagnitude) &&
+                float.IsFinite(toAnchor.sqrMagnitude) && normal.sqrMagnitude > .5f &&
+                Mathf.Abs(normal.normalized.y) < .3f && velocity.y > 2 && toAnchor.y > 2 &&
+                Vector3.Dot(velocity, toAnchor) > 0;
+        }
         private static float Strength(float value) => float.IsFinite(value) ? Mathf.Clamp01(value) : 0;
         private static float Filter(float target, ref float stage, float angle, float frequency, float dt)
         {
@@ -144,7 +153,9 @@ namespace WebShooter.Swing
             lastRotation = rotation; sampled = true;
             bool active = AssistanceEnabled && Application.isFocused && motion.Enabled && !motion.Paused &&
                 app.KeyboardInput != null && app.KeyboardInput.InputEnabled && app.KeyboardInput.Captured;
-            Filter.Step(Time.unscaledDeltaTime, motion.Body.Velocity, motion.Body.State == TraversalState.WallRunning,
+            bool ascendingWall = TraversalViewFilter.WallAscentCue(motion.Body.State, motion.Body.Attached,
+                motion.Body.Velocity, motion.ShotSurfaceNormal, motion.Body.Anchor - motion.Body.Position);
+            Filter.Step(Time.unscaledDeltaTime, motion.Body.Velocity, ascendingWall,
                 !motion.Body.Grounded, active, manual, PitchStrength, RollStrength);
             pivot.Transform.localRotation = Filter.Rotation(Mathf.DeltaAngle(0, rotation.eulerAngles.x));
             if (!AssistanceEnabled && Filter.Angles.sqrMagnitude < .000001f) Detach();

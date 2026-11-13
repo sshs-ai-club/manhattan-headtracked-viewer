@@ -20,6 +20,20 @@ namespace WebShooter.Swing.Tests
             Assert.That(Settle(f, Vector3.down * 24, false, false).x, Is.EqualTo(0).Within(.001));
             Assert.That(Settle(f, Vector3.up * 24, false, true).x, Is.EqualTo(0).Within(.001));
         }
+        [Test] public void WallAnchorWinchingLooksUpWithoutForcingWallRunning()
+        {
+            var rising = Vector3.up * 14; var anchor = new Vector3(5, 20, 0);
+            bool cue = TraversalViewFilter.WallAscentCue(TraversalState.Swinging, true, rising, Vector3.left, anchor);
+            Assert.That(cue, Is.True);
+            Assert.That(Settle(new TraversalViewFilter(), rising, cue, true).x, Is.LessThan(-54));
+            Assert.That(TraversalViewFilter.WallAscentCue(TraversalState.Airborne, false, rising, Vector3.left, anchor), Is.False);
+            foreach (var normal in new[] { Vector3.up, Vector3.down, Vector3.zero, Vector3.one * float.NaN })
+                Assert.That(TraversalViewFilter.WallAscentCue(TraversalState.Swinging, true, rising, normal, anchor), Is.False);
+            Assert.That(TraversalViewFilter.WallAscentCue(TraversalState.Swinging, true, -rising, Vector3.left, anchor), Is.False);
+            Assert.That(TraversalViewFilter.WallAscentCue(TraversalState.Swinging, true, rising, Vector3.left, -anchor), Is.False);
+            Assert.That(TraversalViewFilter.WallAscentCue(TraversalState.Swinging, true, new Vector3(-100, 3, 0), Vector3.left, anchor), Is.False);
+            Assert.That(TraversalViewFilter.WallAscentCue(TraversalState.WallRunning, false, rising, Vector3.left, Vector3.zero), Is.True);
+        }
         [Test] public void OffZeroStrengthAndInvalidTelemetryAreNeutral()
         {
             var f = new TraversalViewFilter();
