@@ -287,6 +287,7 @@ namespace WebShooter.Swing
             // Only a real corner insertion/removal needs a new effective length.
             if (anchor == Anchor && Mathf.Abs(fixedLengthChange) < .00001f) return;
             Anchor = anchor;
+            if(Settings.gripMotor.enabled){RopeLength=Mathf.Max(Settings.minRopeLength,RopeLength-fixedLengthChange);return;}
             if(Settings.features.resetLengthAtWrap)
             { RopeLength = Mathf.Max(Settings.minRopeLength,Vector3.Distance(Position,anchor)); return; }
             RopeLength = Mathf.Max(Mathf.Max(Settings.minRopeLength, Vector3.Distance(Position, anchor)), RopeLength - fixedLengthChange);
@@ -405,6 +406,12 @@ namespace WebShooter.Swing
             }
             Vector3 v = Velocity + (gravity + steering) * h;
             v *= Mathf.Exp(-Settings.airDrag * h);
+            // Minimal grip uses a compliant tensile cable: bounded force, never a pose projection or impulse.
+            if(Settings.gripMotor.enabled && Attached)
+            {
+                TensionAcceleration=GripRopeMotor.Tension(v,Anchor-Position,RopeLength,Settings.gripMotor);
+                v+=(Anchor-Position).normalized*(TensionAcceleration*h);
+            }
             Vector3 p = Position + v * h;
             // Resolve the supporting plane before rope tension so gravity cannot pull a resting
             // body below the floor and turn that penetration into horizontal web propulsion.
@@ -432,13 +439,13 @@ namespace WebShooter.Swing
                 }
                 if (Settings.ratchetRope && reel == 0f && dist < RopeLength) RopeLength = Mathf.Max(Settings.minRopeLength, dist);
                 bool taut=Settings.features.tensionOnlyRope?dist>=RopeLength:dist>RopeLength;
-                if (taut && dist > 1e-6f)
+                if (!Settings.gripMotor.enabled && taut && dist > 1e-6f)
                 {
                     Vector3 n = d / dist;
                     RopeCorrectionMetres=Mathf.Max(0,dist-RopeLength);
                     p = Anchor + n * RopeLength;          // 줄이 늘어나지 않게 위치를 구 위로 되돌린다
                     float outward = Vector3.Dot(v, n);
-                    TensionAcceleration=Mathf.Max(0,outward)/h;
+                    TensionAcceleration+=Mathf.Max(0,outward)/h;
                     if (outward > 0f) v -= n * outward;   // 줄 방향 바깥쪽 속도를 지운다 (장력)
                 }
             }

@@ -27,6 +27,16 @@ namespace WebShooter.Swing.Tests
             var command=input.Sample(.02f);Assert.That(command.localMovement,Is.EqualTo(Vector3.zero));
             Assert.That(command.lookDegrees,Is.EqualTo(Vector2.zero));
         }
+        [TestCase(false)][TestCase(true)] public void GloveCannotHideLossBetweenReads(bool gap)
+        {
+            double now=10;var input=new BufferedGripInput(()=>now);long seq=0;
+            void Send(bool held)=>input.Submit(new GripFrame{sequence=++seq,receivedAtSeconds=now,held=held,aim=new Ray(Vector3.zero,Vector3.forward)});
+            Send(false);input.ReadActions();Send(true);Assert.That(input.ReadActions().firePressed,Is.True);
+            if(gap)now+=.3;else Send(false);
+            Send(true);var action=input.ReadActions();Assert.That(action.release,Is.True);
+            Assert.That(action.fireHeld || action.firePressed,Is.False);Assert.That(input.ReadActions().fireHeld,Is.False);
+            Send(false);input.ReadActions();Send(true);Assert.That(input.ReadActions().firePressed,Is.True);
+        }
         [TestCase(30)][TestCase(60)][TestCase(120)] public void MotorHasMeasuredForceSpeedPowerAndNoTangentialForce(int fps)
         {
             var s=new GripMotorSettings{enabled=true};var v=new Vector3(8,0,0);
@@ -40,11 +50,11 @@ namespace WebShooter.Swing.Tests
                 Assert.That(work,Is.LessThanOrEqualTo(s.specificPower/fps+.001f));v=next;
             }
         }
-        [Test] public void MotorBrakesBeforeSurfaceWithinForceLimit()
+        [Test] public void TensileWebNeverPushesAwayToBrakeInwardMotion()
         {
             var s=new GripMotorSettings{enabled=true};var v=Vector3.up*18;
             var next=GripRopeMotor.Apply(v,Vector3.up*4.1f,.02f,s,out float work,out float acceleration);
-            Assert.That(next.y,Is.LessThan(v.y));Assert.That(work,Is.LessThan(0));
+            Assert.That(next,Is.EqualTo(v),"A web cannot push the player away from its anchor.");Assert.That(work,Is.Zero);
             Assert.That(Mathf.Abs(acceleration),Is.LessThanOrEqualTo(s.acceleration+.001f));
         }
         [TestCase(30)][TestCase(60)][TestCase(120)] public void GroundTakeoffUsesOnlyHeldGripAndReleaseAddsNoImpulse(int fps)
@@ -56,6 +66,16 @@ namespace WebShooter.Swing.Tests
             Assert.That(b.RopeCorrectionMetres,Is.LessThan(.02f));Assert.That(b.ResetSequence,Is.EqualTo(1));
             var v=b.Velocity;b.Release(true);Assert.That(b.Velocity,Is.EqualTo(v));Assert.That(b.GripMotorWork,Is.GreaterThan(0));
             double work=b.GripMotorWork;b.Step(1f/fps);Assert.That(b.GripMotorWork,Is.EqualTo(work));
+        }
+        [Test] public void CompliantWebBoundsTensionWithoutPositionProjection()
+        {
+            var settings=MinimalGripInput.Settings();settings.gravity=settings.airDrag=0;
+            var body=new SwingPhysics(settings);body.Reset(Vector3.up*100);body.Velocity=Vector3.forward*18;
+            body.Attach(body.Position-Vector3.forward*50);body.Step(1f/120);
+            Assert.That(body.RopeCorrectionMetres,Is.LessThan(.005f));
+            Assert.That(body.Velocity.z,Is.GreaterThanOrEqualTo(18-90f/120-.001f));
+            Assert.That(body.TensionAcceleration,Is.InRange(0,90));
+            Assert.That(body.Position.z,Is.EqualTo(body.Velocity.z/120).Within(.001));
         }
         [Test] public void InvalidMotorInputCannotAddEnergy()
         {

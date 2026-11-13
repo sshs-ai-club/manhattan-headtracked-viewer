@@ -1,40 +1,54 @@
 # Minimal grip traversal (experimental)
 
 Opt in with `--minimal-grip`. The existing controls remain the default.
-Aim with the mouse. Press and hold the left button to attach and power the web winch;
-release to coast. The capture click never fires. Esc suspends input, detaches, and
-requires a neutral button before rearming. No WASD, jump, separate reel, launch,
-velocity steering, automatic refire or route-position rescue is used in this mode.
+Aim with the mouse; press/hold left mouse to attach and power the web; release to coast.
+The capture click never fires. Esc cancels input and requires neutral before rearming.
+One button still includes continuous aim. There is no WASD, jump, separate reel, launch,
+velocity steering, automatic refire, or route-position rescue in this mode.
 
 ## Physical contract
 
-The winch applies acceleration along the real, collision-tested web, with a 55 m/s²
-acceleration cap, 18 m/s inward speed target and 1200 J/kg/s positive work cap.
-Approaching a surface lowers the target and permits bounded radial braking;
-tangential motion is untouched. Rope take-up consumes only distance already
-travelled inward. Ordinary unilateral rope and swept building constraints remain.
-`GripMotorWork` records signed kinetic work in J/kg; `GripMotorAcceleration` records
-signed radial acceleration. These are game-scale powered-web forces, not claims
-that an unpowered human or real glove can generate them.
+The powered winch adds inward acceleration only (55 m/s² cap), up to an inward speed
+target of 18 m/s, with positive work capped at 1200 J/kg/s. It cannot push outward to
+brake motion toward an anchor. `GripMotorWork` is signed kinetic work in J/kg.
+A compliant tensile spring/damper replaces the old rigid constraint in this mode:
+35 s⁻² stiffness, 8 s⁻¹ damping, 90 m/s² tension cap, and no rope position projection.
+Slack take-up consumes only actual inward travel; routing preserves elastic rest length.
+`TensionAcceleration` and `GripMotorAcceleration` are separate: the motor cap is not a
+whole-body acceleration cap. Collision and gravity remain real simulation constraints.
+These are game-scale powered-web forces, not human-safe force/comfort guarantees.
 
-`BufferedGripInput` is a transport-neutral future-glove mock, not firmware integration.
-It accepts monotonic sequence numbers and host-monotonic receipt times, expires held
-state after 200 ms, and requires neutral after loss. Actual raw head translation and
-rotation are not motor inputs. Existing wrist v1 event semantics are unchanged.
-Mouse/hand aim remains a continuous control channel: one button does not mean no aim.
+`BufferedGripInput` is a future-glove mock, not firmware. It requires monotonic sequence
+numbers and host-monotonic receipt times, expires held state after 200 ms, and latches
+loss/releases even between render reads. Neutral is required before rearming. Existing
+wrist v1 events are unchanged. Raw tracked head pose is not a movement force input.
 
-## Verification and limits
+## Measured checks
 
-- Portable Windows suite: 172 tests, 170 passed and 2 platform skips; manifest validation
-  and eight PowerShell parser assertions passed.
-- Changed Core and Viewer C# assemblies compile against the preserved Unity 6000.3.22f1
-  Windows player references. Existing native traversal validation passed.
-- Main-thread execution of Swing NUnit assertions in a separate copied player:
-  197 passed, one Editor-only `SerializedInspectorFlowFlagsReachTheExistingPhysicsSettings`
-  skipped. A disposable reflection runner supplies setup/teardown and test-case arguments.
-  This is not the official Unity Test Runner or a clean Unity build.
-- The new 12/20 distinct-building restricted-input fixtures and full historical replay
-  matrices are being measured. They are scripted pilots, not trained AI or human playtests.
-- Unity Editor, a clean Player build, physical glove input, human feel/comfort and rendered
-  streamed-city traversal are not yet verified. Headless rendering exceptions do not count
-  as a rendering pass. Keep the feature opt-in until those gates are complete.
+Windows, Unity 6000.3.22f1 preserved player, modified managed assemblies compiled with
+.NET 8 Roslyn against that player's references. This is not a clean Unity Editor build.
+- Portable suite: 170/172 passed, two skips; manifest and eight PowerShell checks passed.
+- Existing native traversal validation passed. Historical AirChain: ON 1080/1080,
+  OFF comparison 396/1080; all 2160 executed. Slingshot: 1152/1152 passed.
+- Main-thread NUnit assertion harness: 227 passed, one Editor serialization test skipped
+  (includes 15 camera assertions from a separate draft). New camera revision: 16/16 passed.
+- One-grip restricted scripted fixtures: 12/12 passed across 12/20 distinct collider
+  buildings, 5/9 alternating right-angle course changes, 45/50 m spacing, 30/60/120 fps.
+  Every shot/release is an explicit input; actual attach/release counts must match, with
+  no automatic detach, collision, floor touch or additional body reset. Travel 408–794 m;
+  maximum motor acceleration 55, cable tension 90, total acceleration 134.23 m/s²;
+  rope position correction zero. This is open-air course turning, not facade wrapping.
+  The state-aware pilot uses visible high facade anchors and speed-aware release timing.
+- Independent review found nonphysical push braking, loss hidden by fresh packets and
+  overly permissive route evidence. Failure-first checks now cover those cases. Early
+  blocked/fixed-timing fixtures failed; they were not counted as successful human play.
+
+## Remaining gates
+
+Additional runtime-compatible tests: 268 passed, three `SurfaceVariantFactoryTests`
+failed in the headless player (missing shader/material behavior). Editor-only baking,
+serialization and coroutine PlayMode suites remain unrun without the pinned Editor.
+Camera component opt-in was probed but active camera motion was gated by uncaptured input
+and paused movement; filter/pivot/package tests are not proof of active human camera feel.
+No physical glove, human comfort/playtest, rendered streamed-city traversal, trained-policy
+performance or clean distributable build is claimed. Keep this opt-in and the PR draft.
