@@ -46,10 +46,13 @@ Windows, Unity 6000.3.22f1 preserved player, modified managed assemblies compile
 ## Remaining gates
 
 Additional runtime-compatible tests: 268 passed, three `SurfaceVariantFactoryTests`
-failed in the headless player (missing shader/material behavior):
+failed identically in both the changed and unchanged-baseline headless players:
 `NativeFactoryRoundTripPreservesOpticalCoverageAndRestoresImportedPointersAndEmission`,
 `OneSourceHasIndependentDefaultAndFactoryCachesEvenWhenFactoriesHaveValueEquality`, and
 `RootsRegisteredWhileOffShareOnlyTheirFactoryAndReleaseTheLastVariantReference`.
+The first has a missing glTF shader, the second reads smoothness 0 instead of .15, and
+the third expects immediate EditMode destruction while Player `Destroy` is deferred.
+Baseline comparison is not an Editor pass; all three remain verification limitations.
 The full `tools/test.ps1` passed portable checks then stopped because `unity` is absent. Editor-only baking,
 serialization and coroutine PlayMode suites remain unrun without the pinned Editor.
 Camera component opt-in was probed but active camera motion was gated by uncaptured input
