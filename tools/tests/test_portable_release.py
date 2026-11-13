@@ -150,6 +150,31 @@ class PortableReleaseTests(unittest.TestCase):
             self.assertEqual(after['baseArchiveSha256'],pin['sha256'])
         self.assertEqual(default.read_bytes(),unchanged)
 
+    def test_validated_player_round_trip_accepts_powershell_bom_pin(self):
+        from test_package_windows import WindowsPackageTests
+        player=WindowsPackageTests('test_zip_is_reproducible_and_receipt_hashes_exact_allowed_payload')
+        self.addCleanup(player.doCleanups)
+        player.setUp()
+        built=player.package()
+        pin_path=self.root/'validated-player.json'
+        pin_path.write_text(json.dumps({'sha256':built['zipSha256'],
+                                       'viewerRevision':player.identity['viewerRevision']}),encoding='utf-8-sig')
+        self.assertTrue(pin_path.read_bytes().startswith(b'\xef\xbb\xbf'))
+        pin=portable.load_player_pin(pin_path)
+        result=portable.package(Path(built['zip']),self.stage,self.root/'release.zip',self.revision,
+                                'v0.2.0-preview.1',player_pin=pin)
+        with zipfile.ZipFile(built['zip']) as original, zipfile.ZipFile(result['zip']) as output:
+            receipt=json.loads(output.read('INTEGRITY.json'))
+            self.assertEqual(receipt['buildIdentity'],player.identity)
+            self.assertEqual(receipt['distributionVersion'],'v0.2.0-preview.1')
+            self.assertEqual(receipt['baseArchiveSha256'],built['zipSha256'])
+            resources='ManhattanViewer_Data/resources.assets'
+            self.assertEqual(output.read(resources),original.read(resources))
+            for record in receipt['files']:
+                data=output.read(record['path'])
+                self.assertEqual(len(data),record['bytes'])
+                self.assertEqual(hashlib.sha256(data).hexdigest(),record['sha256'])
+
     def test_invalid_pin_values_and_duplicate_keys_are_rejected(self):
         good=portable.load_player_pin(self.explicit_pin())
         invalid=[None,[],{},dict(good,sha256=True),dict(good,sha256='A'*64),
