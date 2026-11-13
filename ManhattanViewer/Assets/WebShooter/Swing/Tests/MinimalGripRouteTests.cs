@@ -64,7 +64,6 @@ namespace WebShooter.Swing.Tests
                         if(f==fps*8-1)Assert.Fail("Timed out approaching building "+i+" at "+motion.Body.Position);
                     }
                     Step(false,target);releases++;Assert.That(motion.Body.Attached || motion.Flying,Is.False);
-                    Step(false,target);
                 }
                 Assert.That(actualAttachments,Is.EqualTo(count));Assert.That(actualReleases,Is.EqualTo(count));
                 Assert.That(maxCorrection,Is.Zero);Assert.That(maxTension,Is.LessThanOrEqualTo(settings.gripMotor.tensionAcceleration+.01f));

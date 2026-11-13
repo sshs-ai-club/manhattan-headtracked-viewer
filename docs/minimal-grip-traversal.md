@@ -30,8 +30,8 @@ Windows, Unity 6000.3.22f1 preserved player, modified managed assemblies compile
 - Portable suite: 170/172 passed, two skips; manifest and eight PowerShell checks passed.
 - Existing native traversal validation passed. Historical AirChain: ON 1080/1080,
   OFF comparison 396/1080; all 2160 executed. Slingshot: 1152/1152 passed.
-- Main-thread NUnit assertion harness: 227 passed, one Editor serialization test skipped
-  (includes 15 camera assertions from a separate draft). New camera revision: 16/16 passed.
+- Main-thread NUnit assertion harness: 229 passed, one Editor serialization test skipped
+  (includes 16 camera assertions from the separate camera draft).
 - One-grip restricted scripted fixtures: 12/12 passed across 12/20 distinct collider
   buildings, 5/9 alternating right-angle course changes, 45/50 m spacing, 30/60/120 fps.
   Every shot/release is an explicit input; actual attach/release counts must match, with
@@ -40,13 +40,17 @@ Windows, Unity 6000.3.22f1 preserved player, modified managed assemblies compile
   rope position correction zero. This is open-air course turning, not facade wrapping.
   The state-aware pilot uses visible high facade anchors and speed-aware release timing.
 - Independent review found nonphysical push braking, loss hidden by fresh packets and
-  overly permissive route evidence. Failure-first checks now cover those cases. Early
+  overly permissive route evidence, and a release-frame pause. Failure-first checks now cover those cases. Early
   blocked/fixed-timing fixtures failed; they were not counted as successful human play.
 
 ## Remaining gates
 
 Additional runtime-compatible tests: 268 passed, three `SurfaceVariantFactoryTests`
-failed in the headless player (missing shader/material behavior). Editor-only baking,
+failed in the headless player (missing shader/material behavior):
+`NativeFactoryRoundTripPreservesOpticalCoverageAndRestoresImportedPointersAndEmission`,
+`OneSourceHasIndependentDefaultAndFactoryCachesEvenWhenFactoriesHaveValueEquality`, and
+`RootsRegisteredWhileOffShareOnlyTheirFactoryAndReleaseTheLastVariantReference`.
+The full `tools/test.ps1` passed portable checks then stopped because `unity` is absent. Editor-only baking,
 serialization and coroutine PlayMode suites remain unrun without the pinned Editor.
 Camera component opt-in was probed but active camera motion was gated by uncaptured input
 and paused movement; filter/pivot/package tests are not proof of active human camera feel.

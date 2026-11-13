@@ -77,6 +77,18 @@ namespace WebShooter.Swing.Tests
             Assert.That(body.TensionAcceleration,Is.InRange(0,90));
             Assert.That(body.Position.z,Is.EqualTo(body.Velocity.z/120).Within(.001));
         }
+        [Test] public void FreshReleaseImmediatelyCoastsWithoutPausingSimulation()
+        {
+            var rig=new GameObject();var flight=rig.AddComponent<Manhattan.Viewer.FreeFlightController>();flight.enabled=false;
+            var input=new BufferedGripInput(()=>10);var motion=new WebSwingMotionInput(input,flight,null,MinimalGripInput.Settings());
+            try{
+                flight.SetPose(Vector3.up*100,Quaternion.identity);motion.Activate();
+                void Send(long seq,bool held)=>input.Submit(new GripFrame{sequence=seq,receivedAtSeconds=10,held=held,aim=new Ray(Vector3.up*100,Vector3.forward)});
+                Send(1,false);input.ReadActions();Send(2,true);input.ReadActions();motion.Body.Attach(Vector3.up*150);motion.Body.Velocity=Vector3.forward*10;
+                Send(3,false);var command=motion.Sample(.02f);
+                Assert.That(motion.Paused || motion.Body.Attached,Is.False);Assert.That(motion.SimulatedTime,Is.EqualTo(.02f).Within(.0001));Assert.That(command.cityPosition.z,Is.GreaterThan(.1f));
+            }finally{motion.Collision.Dispose();Object.DestroyImmediate(rig);}
+        }
         [Test] public void InvalidMotorInputCannotAddEnergy()
         {
             var s=new GripMotorSettings{enabled=true};var v=Vector3.one;

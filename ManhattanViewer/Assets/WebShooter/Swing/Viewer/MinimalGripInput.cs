@@ -48,7 +48,7 @@ namespace WebShooter.Swing
         private readonly GripEdges edges = new GripEdges();
         private readonly Func<double> clock;
         private GripFrame latest;
-        private bool hasFrame, cancelPending;
+        private bool hasFrame, cancelPending, lossPending;
         public bool Enabled = true;
         public double StaleSeconds = .2;
         public BufferedGripInput(Func<double> now) { clock = now ?? throw new ArgumentNullException(nameof(now)); }
@@ -60,15 +60,17 @@ namespace WebShooter.Swing
                 frame.receivedAtSeconds > now || now - frame.receivedAtSeconds > StaleSeconds ||
                 !Finite(frame.aim.origin) || !Finite(frame.aim.direction) || frame.aim.direction.sqrMagnitude < .01f) return false;
             // Do not let a fresh packet erase a loss or release that occurred between reads.
-            if(hasFrame && (now-latest.receivedAtSeconds>StaleSeconds || latest.held && !frame.held))cancelPending=true;
+            if(hasFrame && now-latest.receivedAtSeconds>StaleSeconds)lossPending=cancelPending=true;
+            if(hasFrame && latest.held && !frame.held)cancelPending=true;
             latest = frame; hasFrame = true; return true;
         }
         public MotionCommand Sample(float dt) => default;
         public TraversalActions ReadActions()
         {
-            if(cancelPending){cancelPending=false;edges.Update(false,false);
-                if(Enabled && !latest.held && clock()-latest.receivedAtSeconds<=StaleSeconds)edges.Update(true,false);
-                return new TraversalActions{release=true};}
+            if(cancelPending){bool fresh=Enabled && clock()>=latest.receivedAtSeconds && clock()-latest.receivedAtSeconds<=StaleSeconds;
+                bool activeRelease=fresh && !lossPending;cancelPending=lossPending=false;edges.Update(false,false);
+                if(fresh && !latest.held)edges.Update(true,false);
+                return new TraversalActions{active=activeRelease,release=true};}
             double age = clock() - latest.receivedAtSeconds;
             bool active = Enabled && hasFrame && age >= 0 && age <= StaleSeconds;
             edges.Update(active, latest.held);
