@@ -2,7 +2,7 @@
 
 Scratch branch only, based on PR #28 at 9191c40b1e1762e0a8d7ca79bf0d098595fcd0bf. Do not merge, publish a player, or reuse this setup as a full-city catalog. This supports the existing #27/#29 native test follow-up without changing either PR branch or any assertion/runtime source.
 
-Use a clean disposable Windows Unity Build Automation target with the same pinned Editor and unchanged EditMode test configuration. Set its repository-relative Pre-Build Script to `tools/cloud-fixture/prebuild.sh`. Do not use a pre-export callback: fixture setup must finish before tests. The hook runs before UBA launches its normal Unity process.
+Use a clean disposable Windows Unity Build Automation target with the same pinned Editor and unchanged EditMode test configuration. Set its repository-relative Pre-Build Script to `../tools/cloud-fixture/prebuild.sh`. Do not use a pre-export callback: fixture setup must finish before tests. The hook runs before UBA launches its normal Unity process.
 
 The Bash wrapper invokes Windows PowerShell, which downloads only the canonical public city-source-v2 `Manhattan_Source_and_Materials.zip` (81,434,566 bytes) and verifies SHA-256 `9d703c29ec6dc1192249a26e1d3577b1ca06beffddb61f12e43db1ded86f47b0`. It extracts only the exact building JSON and its original provenance to a new cache folder. Building JSON is 19,186,837 bytes with SHA-256 `9bd3a981f30e6efcc783325389211219a47d47730bfb50d3d83469ebd548d091`, matching the repository's pinned source manifest. The complete downloaded archive retains all original notices.
 
@@ -17,3 +17,9 @@ Official interface documentation:
 - https://docs.unity.com/en-us/build-automation/reference/available-environment-variables
 
 Canonical source release: https://github.com/sshs-ai-club/manhattan-headtracked-viewer/releases/tag/city-source-v2
+
+## Diagnostic revision
+
+Observed Windows UBA resolves the hook relative to its configured ManhattanViewer project folder, despite repository-relative wording in the documentation. Use `../tools/cloud-fixture/prebuild.sh` for that exact target. Downloads have a 180-second timeout and PowerShell progress rendering is disabled. Fixture Editor setup has a 600-second timeout, emits 30-second progress heartbeats, and streams only fixed diagnostic categories and numeric compiler/readiness codes, not arbitrary log text. On timeout it terminates only the Editor process it started; it does not alter licenses, security settings, runtime, tests or acceptance. Raw setup logs remain in the new disposable cache folder. A timed-out setup is a failure, never a passing test run.
+
+Log draining is bounded to 200 lines or 250ms per poll, and the Editor deadline is checked first. Termination checks the owned Editor PID; it does not promise cleanup of child processes. If termination fails, stop the disposable cloud job.
