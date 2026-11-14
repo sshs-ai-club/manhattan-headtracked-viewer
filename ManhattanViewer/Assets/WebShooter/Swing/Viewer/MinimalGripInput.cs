@@ -4,25 +4,43 @@ using UnityEngine;
 using UnityEngine.InputSystem;
 namespace WebShooter.Swing
 {
-    /// <summary>One grip plus aim. No movement, jump, launch, flight or separate reel channels.</summary>
+    /// <summary>One grip plus aim, with optional R debug flight and Q two-hand launch.</summary>
     public sealed class MinimalGripInput : ITraversalInputSource
     {
         private readonly IMotionInputSource look;
-        private readonly Func<bool> eligible;
+        private readonly Func<bool> eligible, freeFlight;
         private readonly GripEdges edges = new GripEdges();
-        public MinimalGripInput(IMotionInputSource source, Func<bool> canRead) { look = source; eligible = canRead; }
+        private readonly GripEdges launchEdges = new GripEdges();
+        private readonly GripEdges flightEdges = new GripEdges();
+        public MinimalGripInput(IMotionInputSource source, Func<bool> canRead, Func<bool> isFreeFlight = null)
+        { look = source; eligible = canRead; freeFlight = isFreeFlight ?? (() => false); }
         public MotionCommand Sample(float dt)
         {
             var input = look != null ? look.Sample(dt) : default;
-            return new MotionCommand { lookDegrees = input.lookDegrees };
+            if (!eligible()) return default;
+            // Debug flight alone gets the existing WASD/QE/speed controls. Normal grip never steers.
+            return freeFlight() ? input : new MotionCommand { lookDegrees = input.lookDegrees };
         }
         public TraversalActions ReadActions()
         {
-            bool active = eligible();
-            edges.Update(active, Mouse.current != null && Mouse.current.leftButton.isPressed);
-            return new TraversalActions { active = active, firePressed = edges.Pressed, fireHeld = edges.Held,
-                release = edges.Released, viewportX = .7f,
-                aim = Camera.main != null ? Camera.main.ViewportPointToRay(new Vector3(.5f,.5f,0)) : default };
+            var keyboard = Keyboard.current;
+            return ReadControls(eligible(), Mouse.current != null && Mouse.current.leftButton.isPressed,
+                keyboard != null && keyboard.qKey.isPressed, keyboard != null && keyboard.rKey.isPressed,
+                freeFlight(), Camera.main != null ? Camera.main.ViewportPointToRay(new Vector3(.5f,.5f,0)) : default);
+        }
+        // Explicit control snapshot makes neutral/rearm and debug-mode transitions testable.
+        public TraversalActions ReadControls(bool active, bool gripHeld, bool launchHeld, bool flightHeld, bool flying, Ray aim)
+        {
+            flightEdges.Update(active, flightHeld);
+            bool toggle = flightEdges.Pressed;
+            // Never carry a held grip or Q charge through pause or either flight transition.
+            bool traversalActive = active && !flying && !toggle;
+            edges.Update(traversalActive, gripHeld);
+            launchEdges.Update(traversalActive, launchHeld);
+            return new TraversalActions { active = active, toggleFlight = toggle,
+                firePressed = edges.Pressed, fireHeld = edges.Held, release = edges.Released,
+                launchPressed = launchEdges.Pressed, launchHeld = launchEdges.Held,
+                launchReleased = launchEdges.Released, viewportX = .7f, aim = aim };
         }
         public static SwingSettings Settings()
         {

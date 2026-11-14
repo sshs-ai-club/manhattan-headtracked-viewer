@@ -40,7 +40,7 @@ namespace WebShooter.Swing
             app.Streamer.CollisionProxiesEnabled = true;
             if(viewerUI!=null && (!hasHelpMode || lastHelpMode!=swing.Enabled))
             {
-                viewerUI.SetMovementHint(swing.Body.Settings.gripMotor.enabled?"Grip: aim · HOLD LMB to pull · release to coast · Esc settings":swing.Enabled?"WASD steer · Q hold/release launch · RMB/E reel · Z pay out · R flight":"WASD fly · Q/E descend/rise · Mouse look · R swing · Esc settings");
+                viewerUI.SetMovementHint(!swing.Enabled ? "DEBUG FLIGHT: WASD move | Q/E down/up | R return | Esc settings" : swing.Body.Settings.gripMotor.enabled ? "Grip: HOLD LMB / release | Q hold/release launch | R debug flight | Esc settings" : "WASD steer | Q hold/release launch | RMB/E reel | Z pay out | R flight");
                 hasHelpMode=true;lastHelpMode=swing.Enabled;
             }
             if (!swing.Body.Settings.gripMotor.enabled && hand == null && Time.unscaledTime >= nextHandSearch)
@@ -60,13 +60,13 @@ namespace WebShooter.Swing
             var tuning=gameObject.AddComponent<TraversalTuning>();
             bool gripMode=ManhattanBootstrap.HasArgument("--minimal-grip");
             System.Func<bool> eligible=()=>app.KeyboardInput.InputEnabled && app.KeyboardInput.Captured && Application.isFocused;
-            ITraversalInputSource human=gripMode ? new MinimalGripInput(previousInput,eligible) : new HumanTraversalInput(previousInput,eligible);
+            ITraversalInputSource human=gripMode ? new MinimalGripInput(previousInput,eligible,()=>swing!=null && !swing.Enabled) : new HumanTraversalInput(previousInput,eligible);
             swing = new WebSwingMotionInput(human, app.Flight, app.Origin,gripMode?MinimalGripInput.Settings():tuning.Settings)
                 { Paused = true, AutomaticCruiseAssist = !gripMode };
             swing.ReconnectAssist=tuning.Reconnect;
             if(gripMode)swing.ReconnectAssist=new ReconnectAssistSettings();
             swing.Launch.Settings=tuning.Launch;
-            if(gripMode)swing.Launch.Settings.enabled=false;
+            // Q explicitly opts into the existing two-hand launch; ordinary grip stays unchanged.
             var features=swing.Body.Settings.features;
             Debug.Log($"TRAVERSAL_FEATURES steering={features.preserveSteeringMomentum} glancing={features.preserveGlancingContact} transitions={features.preserveTransitionMomentum} wrap={features.resetLengthAtWrap} pacing={features.attachmentDrop} fastAttach={features.fixedAttachmentDelay} reconnect={swing.ReconnectAssist.enabled} chain={swing.Body.Settings.chain.enabled}");
             app.Flight.gameObject.AddComponent<SnagLogger>().Attach(swing);
@@ -96,7 +96,8 @@ namespace WebShooter.Swing
             if (swing == null) return;
             if(swing.Body.Settings.gripMotor.enabled)
             {
-                GUI.Box(new Rect(12,Screen.height-60,980,48),"GRIP MODE: aim with mouse; press / hold LMB to pull; release to coast. Esc: settings.\nNo WASD, jump, extra reel button or hidden steering. First capture click does not fire.");
+                GUI.Box(new Rect(12,Screen.height-84,1100,72), swing.Enabled ? "GRIP MODE: aim; HOLD LMB to pull; release to coast. Q hold/release: two-hand launch.\nR: debug flight | Esc: settings. No movement steering in grip mode. First capture click does not fire." : "DEBUG FLIGHT: WASD move; Q/E down/up; mouse look. R: return to grip. Esc: settings.\nRelease held mouse/Q after switching modes, then press again.");
+                if(swing.Enabled && swing.Launch.Status.Length>0)GUI.Label(new Rect(12,Screen.height-30,1000,24),swing.Launch.Charging?$"{swing.Launch.Status} {swing.Launch.Charge*100:0}%":swing.Launch.Status);
                 GUI.Label(new Rect(Screen.width*.5f-8,Screen.height*.5f-12,20,24),"+");
                 return;
             }
