@@ -5,6 +5,95 @@ namespace WebShooter.Swing.Tests
 {
     public sealed class TraversalViewAssistanceTests
     {
+        [TestCase(30)] [TestCase(60)] [TestCase(144)]
+        public void TangentFollowsParabolicMotionAndBothCornersWithoutMouse(int hz)
+        {
+            var f = new TraversalTangentFilter(); float dt = 1f / hz;
+            Vector2 last = Vector2.zero, previousRate = Vector2.zero;
+            float minPitch = 0, maxPitch = 0;
+            for (int i = 0; i < hz * 20; i++)
+            {
+                float t = i * dt;
+                var v = Quaternion.Euler(0, Mathf.Min(t * 15, 180), 0) * Vector3.forward * 25;
+                v.y = 25 - t * 3;
+                var angles = f.Step(dt, v, Quaternion.identity, true, false);
+                var speed = (angles - last) / dt;
+                Assert.That(Mathf.Abs(speed.x), Is.LessThanOrEqualTo(40.01f));
+                Assert.That(Mathf.Abs(speed.y), Is.LessThanOrEqualTo(55.01f));
+                var accel = (speed - previousRate) / dt;
+                Assert.That(Mathf.Abs(accel.x), Is.LessThan(101));
+                Assert.That(Mathf.Abs(accel.y), Is.LessThan(121));
+                minPitch = Mathf.Min(minPitch, angles.x); maxPitch = Mathf.Max(maxPitch, angles.x);
+                last = angles; previousRate = speed;
+            }
+            Assert.That(minPitch, Is.LessThan(-20)); Assert.That(maxPitch, Is.GreaterThan(30));
+            Assert.That(Mathf.Abs(Mathf.DeltaAngle(f.Angles.y, 180)), Is.LessThan(1));
+        }
+        [Test] public void TangentWrapAndVerticalMotionDoNotSnapAndManualOffResetWork()
+        {
+            var f = new TraversalTangentFilter(); float dt = 1f / 60;
+            for (int i = 0; i < 600; i++) f.Step(dt, Vector3.back * 20, Quaternion.identity, true, false);
+            float before = f.Angles.y;
+            f.Step(dt, Quaternion.Euler(0, -179, 0) * Vector3.forward * 20, Quaternion.identity, true, false);
+            Assert.That(Mathf.Abs(f.Angles.y - before), Is.LessThan(1));
+            for (int i = 0; i < 600; i++) f.Step(dt, Vector3.up * 20, Quaternion.identity, true, false);
+            Assert.That(Mathf.Abs(f.Angles.y - before), Is.LessThan(2));
+            for (int i = 0; i < 1200; i++) f.Step(dt, Vector3.right * 20, Quaternion.identity, true, true);
+            Assert.That(f.Neutral, Is.True);
+            for (int i = 0; i < 40; i++) f.Step(dt, Vector3.right * 20, Quaternion.identity, true, false);
+            Assert.That(f.Neutral, Is.True);
+            f.Reset(); Assert.That(f.Angles, Is.EqualTo(Vector2.zero));
+            f.Step(float.NaN, Vector3.right, Quaternion.identity, true, false);
+            f.Step(dt, Vector3.one * float.NaN, Quaternion.identity, true, false);
+            Assert.That(f.Angles, Is.EqualTo(Vector2.zero));
+        }
+        [Test] public void TangentToLegacyModeChangeCannotRevealHiddenPitch()
+        {
+            var f = new TraversalTangentFilter();
+            for (int i = 0; i < 600; i++) f.Step(1f / 60, new Vector3(20, -20, 0), Quaternion.identity, true, false);
+            for (int i = 0; i < 1200; i++)
+            {
+                var before = f.Angles;
+                f.Step(1f / 60, Vector3.down * 20, Quaternion.identity, false, false, 35);
+                Assert.That(Mathf.Abs(f.Angles.x - before.x), Is.LessThanOrEqualTo(40.01f / 60));
+                Assert.That(Mathf.Abs(f.Angles.y - before.y), Is.LessThanOrEqualTo(55.01f / 60));
+            }
+            Assert.That(f.Angles.x, Is.EqualTo(35).Within(.001));
+            Assert.That(Mathf.Abs(Mathf.DeltaAngle(0, f.Angles.y)), Is.LessThan(.001));
+        }
+        [Test] public void TangentUsesObserverFrameAndProtectsPitchPoles()
+        {
+            var f = new TraversalTangentFilter();
+            for (int i = 0; i < 1200; i++) f.Step(1f / 60, Vector3.right * 20,
+                Quaternion.Euler(0, 90, 0), true, false);
+            Assert.That(f.Angles.magnitude, Is.LessThan(.001));
+            for (int i = 0; i < 1200; i++) f.Step(1f / 60, Vector3.up * 20, Quaternion.identity, true, false);
+            f.Rotation(-75); Assert.That(f.Angles.x, Is.EqualTo(-5).Within(.001));
+        }
+        [Test] public void TangentPoleGuardIncludesYawPitchComposition()
+        {
+            foreach (float sign in new[] { -1f, 1f })
+            {
+                var f = new TraversalTangentFilter(); var observer = Quaternion.Euler(sign * 75, 0, 0);
+                for (int i = 0; i < 1200; i++) f.Step(1f / 60, Vector3.up * sign * 20, observer, true, false);
+                var forward = observer * f.Rotation(observer) * Vector3.forward;
+                Assert.That(Mathf.Abs(forward.y), Is.LessThanOrEqualTo(Mathf.Sin(80 * Mathf.Deg2Rad) + .00001f));
+            }
+        }
+        [Test] public void TangentAppliedViewStaysUprightAcrossHeadingWrapAndManualPitch()
+        {
+            var f = new TraversalTangentFilter();
+            for (int i = 0; i < 3600; i++)
+            {
+                var observer = Quaternion.Euler(75 * Mathf.Sin(i / 600f), 0, 0);
+                var velocity = Quaternion.Euler(0, i * .2f, 0) * Vector3.forward * 20 + Vector3.up * 20;
+                f.Step(1f / 60, velocity, observer, true, false);
+                var applied = observer * f.Rotation(observer);
+                Assert.That(float.IsFinite(applied.x + applied.y + applied.z + applied.w), Is.True);
+                Assert.That((applied * Vector3.up).y, Is.GreaterThan(0));
+                Assert.That(Mathf.Abs((applied * Vector3.forward).y), Is.LessThanOrEqualTo(Mathf.Sin(80 * Mathf.Deg2Rad) + .00001f));
+            }
+        }
         private static Vector2 Settle(TraversalViewFilter filter, Vector3 velocity, bool wall, bool airborne,
             bool active = true, float pitch = 1, float roll = 1)
         {

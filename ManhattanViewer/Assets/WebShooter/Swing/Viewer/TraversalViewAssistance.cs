@@ -65,6 +65,72 @@ namespace WebShooter.Swing
         }
     }
 
+    /// <summary>Velocity tangent in the observer frame, without rotating the physics body.</summary>
+    public sealed class TraversalTangentFilter
+    {
+        public Vector2 Angles { get; private set; } // x: local pitch, y: continuous local yaw
+        private Vector2 rate;
+        private float manualHold;
+        public void Reset() { Angles = rate = Vector2.zero; manualHold = 0; }
+        public Vector2 Step(float dt, Vector3 worldVelocity, Quaternion observer, bool active, bool manualLook, float fallbackPitch = 0)
+        {
+            if (!float.IsFinite(dt) || dt <= 0) return Angles;
+            if (dt > .1f) active = false;
+            dt = Mathf.Min(dt, .1f);
+            if (manualLook) manualHold = .8f;
+            bool suppressed = manualHold > 0;
+            manualHold = Mathf.Max(0, manualHold - dt);
+            bool finite = float.IsFinite(worldVelocity.sqrMagnitude) &&
+                float.IsFinite(observer.x) && float.IsFinite(observer.y) &&
+                float.IsFinite(observer.z) && float.IsFinite(observer.w);
+            var v = finite ? Quaternion.Inverse(observer) * worldVelocity : Vector3.zero;
+            active &= finite && worldVelocity.sqrMagnitude > 9 && !suppressed;
+            float horizontal = new Vector2(v.x, v.z).magnitude;
+            // A nearly vertical trajectory has no stable heading. Retain yaw, rather than jitter.
+            float yaw = active ? (horizontal > 1 ? Mathf.Atan2(v.x, v.z) * Mathf.Rad2Deg : Angles.y) : 0;
+            float pitch = active ? Mathf.Clamp(-Mathf.Atan2(v.y, horizontal) * Mathf.Rad2Deg, -65, 65)
+                : float.IsFinite(fallbackPitch) ? Mathf.Clamp(fallbackPitch, -65, 65) : 0;
+            var current = Angles;
+            current.x = Advance(current.x, pitch, ref rate.x, 40, 100, dt, false);
+            current.y = Advance(current.y, yaw, ref rate.y, 55, 120, dt, true);
+            Angles = current;
+            return Angles;
+        }
+        private static float Advance(float angle, float target, ref float speed, float limit, float acceleration, float dt, bool wrap)
+        {
+            float error = wrap ? Mathf.DeltaAngle(angle, target) : target - angle;
+            // Proportional velocity servo with independently bounded angular velocity/acceleration.
+            float desired = Mathf.Clamp(error * 2, -limit, limit);
+            speed = Mathf.MoveTowards(speed, desired, acceleration * dt);
+            return angle + speed * dt;
+        }
+        public Quaternion Rotation(float manualPitch) => Rotation(Quaternion.Euler(manualPitch, 0, 0));
+        public Quaternion Rotation(Quaternion observer)
+        {
+            var local = Quaternion.Euler(Angles.x, Angles.y, 0);
+            var forward = observer * local * Vector3.forward;
+            float elevation = Mathf.Asin(Mathf.Clamp(forward.y, -1, 1)) * Mathf.Rad2Deg;
+            float manualElevation = Mathf.Asin(Mathf.Clamp((observer * Vector3.forward).y, -1, 1)) * Mathf.Rad2Deg;
+            float limit = Mathf.Max(80, Mathf.Abs(manualElevation));
+            bool inverted = (observer * local * Vector3.up).y < 0;
+            if (Mathf.Abs(elevation) > limit || inverted)
+            {
+                float yaw = Mathf.Atan2(inverted ? -forward.x : forward.x, inverted ? -forward.z : forward.z) * Mathf.Rad2Deg;
+                var boundedForward = Quaternion.Euler(-Mathf.Sign(elevation) * limit, yaw, 0) * Vector3.forward;
+                var boundedLocal = Quaternion.Inverse(observer) * boundedForward;
+                float pitch = -Mathf.Atan2(boundedLocal.y, new Vector2(boundedLocal.x, boundedLocal.z).magnitude) * Mathf.Rad2Deg;
+                float localYaw = Mathf.Atan2(boundedLocal.x, boundedLocal.z) * Mathf.Rad2Deg;
+                // Discard hidden orientation at a pole, including yaw/pitch coupling.
+                Angles = new Vector2(pitch, Angles.y + Mathf.DeltaAngle(Angles.y, localYaw));
+                rate = Vector2.zero;
+                local = Quaternion.Euler(Angles.x, Angles.y, 0);
+            }
+            // Cancel incidental roll from composing observer pitch with tangent yaw. Only the bank cue rolls.
+            return Quaternion.Inverse(observer) * Quaternion.LookRotation(observer * local * Vector3.forward, Vector3.up);
+        }
+        public bool Neutral => Mathf.Abs(Angles.x) < .001f && Mathf.Abs(Mathf.DeltaAngle(0, Angles.y)) < .001f;
+    }
+
     /// <summary>A disposable view-only pivot; never reparents the observer or writes projection/calibration.</summary>
     public sealed class TraversalViewPivot
     {
@@ -101,7 +167,9 @@ namespace WebShooter.Swing
     [DefaultExecutionOrder(-100)] // After flight/origin Update; before the package's LateUpdate projection.
     public sealed class TraversalViewAssistance : MonoBehaviour
     {
-        public bool AssistanceEnabled { get; set; } // OFF until explicitly enabled each session.
+        public bool AssistanceEnabled { get; set; } // OFF unless explicitly selected in Settings or command line.
+        public bool TangentEnabled { get; set; } = true;
+        public readonly TraversalTangentFilter Tangent = new TraversalTangentFilter();
         public float PitchStrength { get; set; } = .6f;
         public float RollStrength { get; set; } = .35f;
         public readonly TraversalViewFilter Filter = new TraversalViewFilter();
@@ -117,7 +185,10 @@ namespace WebShooter.Swing
                 ManhattanBootstrap.HasArgument("--traversal-agent") || ManhattanBootstrap.HasArgument("--scripted-flow") ||
                 UnityEngine.SceneManagement.SceneManager.GetActiveScene().name == "TraversalLab") return;
             if (FindFirstObjectByType<TraversalViewAssistance>() == null)
-                new GameObject("Traversal View Assistance").AddComponent<TraversalViewAssistance>();
+                {
+                var assistance = new GameObject("Traversal View Assistance").AddComponent<TraversalViewAssistance>();
+                assistance.AssistanceEnabled = ManhattanBootstrap.HasArgument("--traversal-view");
+            }
         }
         public static bool ManualLookChanged(Quaternion previous, Quaternion current)
         {
@@ -157,12 +228,18 @@ namespace WebShooter.Swing
                 motion.Body.Velocity, motion.ShotSurfaceNormal, motion.Body.Anchor - motion.Body.Position);
             Filter.Step(Time.unscaledDeltaTime, motion.Body.Velocity, ascendingWall,
                 !motion.Body.Grounded, active, manual, PitchStrength, RollStrength);
-            pivot.Transform.localRotation = Filter.Rotation(Mathf.DeltaAngle(0, rotation.eulerAngles.x));
-            if (!AssistanceEnabled && Filter.Angles.sqrMagnitude < .000001f) Detach();
+            float manualPitch = Mathf.DeltaAngle(0, rotation.eulerAngles.x);
+            Filter.Rotation(manualPitch); // Maintain legacy manual-pole clipping even while its cue is hidden.
+            Tangent.Step(Time.unscaledDeltaTime, motion.Body.Velocity, rotation,
+                active && TangentEnabled && !motion.Body.Grounded, manual,
+                active && !TangentEnabled ? Filter.Angles.x : 0);
+            // A single output servo also handles mode changes; never switch to a hidden legacy tilt.
+            pivot.Transform.localRotation = Tangent.Rotation(rotation) * Quaternion.Euler(0, 0, Filter.Angles.y);
+            if (!AssistanceEnabled && Filter.Angles.sqrMagnitude < .000001f && Tangent.Neutral) Detach();
         }
         private void ResetView()
         {
-            Filter.Reset(); sampled = false;
+            Filter.Reset(); Tangent.Reset(); sampled = false;
             if (pivot != null && pivot.Transform != null) pivot.Transform.localRotation = Quaternion.identity;
         }
         private void Detach()
@@ -175,9 +252,10 @@ namespace WebShooter.Swing
         {
             if (app == null || app.KeyboardInput == null || app.KeyboardInput.InputEnabled || app.Flight == null ||
                 !(app.Flight.InputSource is WebSwingMotionInput)) return;
-            GUILayout.BeginArea(new Rect(12, 170, 308, 170), GUI.skin.box);
+            GUILayout.BeginArea(new Rect(12, 170, 340, 210), GUI.skin.box);
             AssistanceEnabled = GUILayout.Toggle(AssistanceEnabled, "Experimental traversal view (default OFF)");
-            GUILayout.Label("Look up / falling look down: " + Mathf.RoundToInt(PitchStrength * 100) + "%");
+            TangentEnabled = GUILayout.Toggle(TangentEnabled, "Follow travel tangent (yaw + pitch)");
+            GUILayout.Label("Legacy climb/fall (when tangent OFF): " + Mathf.RoundToInt(PitchStrength * 100) + "%");
             PitchStrength = GUILayout.HorizontalSlider(PitchStrength, 0, 1);
             GUILayout.Label("Corner bank: " + Mathf.RoundToInt(RollStrength * 100) + "%");
             RollStrength = GUILayout.HorizontalSlider(RollStrength, 0, 1);
