@@ -1,0 +1,15 @@
+# Independent glove input: experimental adapter
+
+`DualGloveInput` accepts left and right `GloveFrame` samples independently on the Unity main thread. It does not read a mouse, keyboard or gamepad. Legacy wrist UDP `yaw,pitch,fire` and its parser are unchanged. This adapter is not yet connected to UDP, BLE or firmware and is not selected automatically by the player.
+
+Each sample contains a hand ID, nonnegative monotonic per-hand sequence, local receive time, held state, calibration validity, aim basis and calibrated render-space ray. The trusted bridge supplies the ray using the calibrated hand orientation, a physical-to-game body-frame transform, and current rendering origin. Do not derive it from the automatic camera pivot: camera yaw/pitch must not rotate a stationary glove ray. Never accept an arbitrary remote timestamp as a local clock. The transport must marshal onto the main thread. Replay injection can use `WebSwingMotionInput.InputOverride`.
+
+Only `CalibratedOrientation` is eligible. `AccelerometerOnly`, invalid calibration and invalid rays invalidate that hand. An accelerometer measures specific force, not absolute heading: gravity does not reveal yaw and dynamic hand acceleration contaminates tilt. This code does not estimate absolute aim from accelerometer readings. A practical bridge requires measured orientation, e.g. fused gyro/accelerometer with explicit heading reference/recentering; gyro drift and magnetic disturbances still require physical validation. The flag is a contract, not proof that a physical estimator is accurate.
+
+Loss after 0.2 seconds, disable or calibration loss releases the rope without pausing gravity. Both hands require a fresh neutral observation before grip. Reordering is rejected per hand. A release received between polls cannot be overwritten by a held sample. Reset a sequence only via explicit `ResetSession` after dropping the prior transport session's queued packets; never infer a reboot from a low sequence.
+
+The current motion engine owns **one active rope**. A new deliberate press transfers ownership to that hand and uses its own ray. Simultaneous presses use last local receipt order. Releasing or losing the owner never silently attaches the still-held other hand. This is alternating-hand traversal, not two simultaneous independent ropes. No synthetic Q launch is generated: the existing keyboard Q mechanism chooses its own paired anchors and therefore cannot truthfully represent independently aimed left/right gloves. Bilateral physical anchors and firmware remain a separate integration gate.
+
+## Verification status
+
+Nine NUnit cases cover independent rays, ownership, simultaneous presses, stale loss, calibration/accelerometer rejection, inter-poll release, reordered packets, explicit session reset, disabled rearm and invalid data. They are authored but **not executed** here: no Unity, Mono or .NET runtime is available in the cloud. Portable checks do not establish Unity compilation, collision-free motion, real sensor tracking or human usability. No physical glove test or playable dual-glove build is claimed.
