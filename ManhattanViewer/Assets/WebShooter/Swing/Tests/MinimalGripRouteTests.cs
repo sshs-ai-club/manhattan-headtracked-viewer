@@ -32,7 +32,7 @@ namespace WebShooter.Swing.Tests
             float maxTension=0,maxTotalAcceleration=0;var previousVelocity=Vector3.zero;
             motion.PhysicsStepped+=sample=>{maxTension=Mathf.Max(maxTension,motion.Body.TensionAcceleration);maxTotalAcceleration=Mathf.Max(maxTotalAcceleration,(sample.velocity-previousVelocity).magnitude/sample.dt);previousVelocity=sample.velocity;};
             int presses=0,releases=0,corners=0,observedCorners=0,passedGates=0,actualAttachments=0,actualReleases=0;bool commandHeld=false;
-            motion.WebAttached+=_=>actualAttachments++;motion.WebReleased+=()=>{actualReleases++;Assert.That(commandHeld,Is.False,"Automatic detach while held is not a successful grip link.");};float travel=0,minHeight=start.y;
+            motion.WebAttached+=_=>actualAttachments++;motion.WebReleased+=()=>{actualReleases++;Assert.That(commandHeld,Is.False,$"Automatic detach while held is not a successful grip link. DIAGNOSTIC tBeforeStep={motion.SimulatedTime:F6} presses={presses} attachments={actualAttachments} contacts={motion.Body.ContactSequence} floorContacts={motion.Body.FloorContactSequence} collider={motion.Body.LastCollisionName} position={motion.Body.Position:F6} velocityAfterResponse={motion.Body.Velocity:F6} anchor={motion.ShotTarget:F6} normal={motion.Body.ContactNormal:F6} wallDeflections={motion.Body.WallDeflections} ropeLength={motion.Body.RopeLength:F6}");};float travel=0,minHeight=start.y;
             var auditedPosition=start;
             motion.PhysicsStepped+=sample=>
             {
