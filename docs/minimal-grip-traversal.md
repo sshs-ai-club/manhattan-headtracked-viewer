@@ -3,9 +3,17 @@
 Opt in with `--minimal-grip`. The existing controls remain the default.
 Aim with the mouse; press/hold left mouse to attach and power the web; release to coast.
 The capture click never fires. Esc cancels input and requires neutral before rearming.
-One button still includes continuous aim. There is no WASD, jump, separate reel, launch,
+One button still includes continuous aim. During ordinary grip there is no WASD, jump, separate reel,
 velocity steering, automatic refire, or route-position rescue in this mode.
 
+
+## Optional debug and two-hand controls
+
+- R toggles the existing collision-aware, no-gravity debug flight. In flight, WASD and Q/E movement use the existing input source; R returns to grip at the current position.
+- In grip mode, hold Q to charge the existing bilateral web launch and release Q to launch. Both visible building anchors must be available. `--launch-off` still disables this optional launch.
+- Q is descent only in debug flight. It cannot charge a launch there.
+- Pause/focus loss and either flight transition cancel held actions. Release LMB/Q before pressing again after returning. Holding R toggles only once.
+- Ordinary LMB grip physics, its no-hidden-steering contract and the stateful glove mock remain unchanged. Q is a keyboard proxy, not a claim of completed two-hand hardware integration.
 ## Physical contract
 
 The powered winch adds inward acceleration only (55 m/s² cap), up to an inward speed
@@ -42,6 +50,17 @@ Windows, Unity 6000.3.22f1 preserved player, modified managed assemblies compile
 - Independent review found nonphysical push braking, loss hidden by fresh packets and
   overly permissive route evidence, and a release-frame pause. Failure-first checks now cover those cases. Early
   blocked/fixed-timing fixtures failed; they were not counted as successful human play.
+
+## R/Q restoration checks
+
+The follow-up restores optional debug flight and Q using the existing launch mechanism.
+Portable checks: 170 passed, 2 skipped, manifest validation and 8 PowerShell assertions passed.
+The first follow-up native assertion run passed 233 checks, with 1 Editor-only skip;
+this includes the original 12 restricted-grip route fixtures and four new snapshot/input-filter checks.
+Two later tests add real Input System Q/R mapping and bilateral-launch/mode composition.
+All final source compiles against the preserved player libraries, but the final rerun was blocked by
+execution permission review. Those two later tests have not run. The running user's player was not
+replaced or restarted. This is still a managed-assembly experimental player, not a clean Editor build.
 
 ## Remaining gates
 
